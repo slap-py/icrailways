@@ -1,0 +1,42 @@
+{
+  "name": "right-of-way",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --import tsx --test src/*.test.ts",
+    "data:fetch": "node scripts/fetch-osm.mjs",
+    "data:download": "node scripts/download-manager.mjs start",
+    "data:status": "node scripts/download-manager.mjs status",
+    "data:stop": "node scripts/download-manager.mjs stop",
+    "data:test": "node --test scripts/download-manager.test.mjs"
+  },
+  "dependencies": {
+    "@turf/turf": "^7.2.0",
+    "lucide-react": "^0.468.0",
+    "maplibre-gl": "^6.10.0",
+    "osmtogeojson": "^3.0.0-beta.5",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "rbush": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.0",
+    "@mapbox/vector-tile": "^3.0.0",
+    "pbf": "^5.1.2",
+    "@types/rbush": "^4.0.0"
+  },
+  "overrides": {
+    "@xmldom/xmldom": "^0.8.11"
+  }
+}
