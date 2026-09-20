@@ -59,7 +59,18 @@ export function MapView(props: Props) {
   const [populationBounds, setPopulationBounds] = useState<[number, number, number, number] | null>(null);
   const population = usePopulation(props.layers.population && props.populationMode === "density" ? populationBounds : null);
   const populationRef = useRef(population);
-  const sourceData = useRef<{ population?: PopulationCell[]; catchment?: Catchment | null; stops?: TransitStop[]; coverage?: CoverageCell[] | null }>({});
+  const sourceData = useRef<{
+    population?: PopulationCell[];
+    catchment?: Catchment | null;
+    stops?: TransitStop[];
+    coverage?: CoverageCell[] | null;
+    built?: Section[];
+    builtStationKey?: string;
+    preview?: Feature<Polygon | MultiPolygon>[];
+    selectedKey?: string;
+    stationBuilt?: Project["stations"];
+    stationMarkerKey?: string;
+  }>({});
   populationRef.current = population;
   const container = useRef<HTMLDivElement>(null),
     mapRef = useRef<GLMap | null>(null),
@@ -69,7 +80,7 @@ export function MapView(props: Props) {
     routeDrag = useRef<{ leg: number; x: number; y: number } | null>(null),
     suppressClick = useRef(false),
     styleReady = useRef(false),
-    staticData = useRef<{ network?: Network; demolished?: string[]; stationProject?: Project["stations"]; station?: Station }>({});
+    staticData = useRef<{ network?: Network; demolished?: string[]; stationGeometryKey?: string }>({});
   latest.current = props;
   const render = () => {
     const map = mapRef.current;
@@ -77,6 +88,12 @@ export function MapView(props: Props) {
     const p = latest.current;
     const corridors = new Map(p.network.corridors.map((c) => [c.id, c]));
     const displayStations = stationPreviews(p.project.stations, p.station);
+    const stationGeometryKey = displayStations
+      .map(s => `${s.id}:${s.corridorId}:${s.position.toFixed(2)}:${(s.lateralOffsetMeters || 0).toFixed(1)}:${s.lengthMeters}`)
+      .sort().join("|");
+    const stationMarkerKey = displayStations
+      .map(s => `${s.id}:${s.name}:${s.platforms}:${s.id === p.station?.id ? 1 : 0}`)
+      .sort().join("|") + `|${stationGeometryKey}`;
     const set = (id: string, features: Feature[]) => {
       const data = featureCollection(features);
       if (map.getSource(id)) (map.getSource(id) as GeoJSONSource).setData(data);
@@ -90,11 +107,13 @@ export function MapView(props: Props) {
     if (!map.getSource("catchment") || sourceData.current.catchment !== p.catchment) set("catchment", p.catchment?.cells || []);
     if (!map.getSource("coverage") || sourceData.current.coverage !== p.coverage) set("coverage", p.coverage || []);
     if (!map.getSource("transit-stops") || sourceData.current.stops !== p.transitStops) set("transit-stops", p.transitStops.map(s => feature({ type: "Point", coordinates: s.coordinates }, { id: s.id })));
-    sourceData.current = { population: populationData, catchment: p.catchment, stops: p.transitStops, coverage: p.coverage };
+    sourceData.current.population = populationData;
+    sourceData.current.catchment = p.catchment;
+    sourceData.current.stops = p.transitStops;
+    sourceData.current.coverage = p.coverage;
     if (
       staticData.current.network !== p.network ||
-      staticData.current.stationProject !== p.project.stations ||
-      staticData.current.station !== p.station ||
+      staticData.current.stationGeometryKey !== stationGeometryKey ||
       !map.getSource("row")
     )
       set(
@@ -122,30 +141,39 @@ export function MapView(props: Props) {
         "roads",
         p.network.roads.map((r) => feature(r.geometry, { id: r.id })),
       );
-    set(
-      "built",
-      p.effective.flatMap((s) => {
-        const c = corridors.get(s.corridorId);
-        return c
-          ? [
-              {
-                ...stationAlignedLine(c, s.start, s.end, displayStations),
-                properties: {
-                  id: c.id,
-                  tracks: s.tracks,
-                  speed: s.maxSpeedKph,
-                  electrified: s.electrified,
+    if (
+      !map.getSource("built") ||
+      sourceData.current.built !== p.effective ||
+      sourceData.current.builtStationKey !== stationGeometryKey
+    ) {
+      set(
+        "built",
+        p.effective.flatMap((s) => {
+          const c = corridors.get(s.corridorId);
+          return c
+            ? [
+                {
+                  ...stationAlignedLine(c, s.start, s.end, displayStations),
+                  properties: {
+                    id: c.id,
+                    tracks: s.tracks,
+                    speed: s.maxSpeedKph,
+                    electrified: s.electrified,
+                  },
                 },
-              },
-            ]
-          : [];
-      }),
-    );
-    set("built-links", junctionLinks(p.network.corridors, p.effective));
+              ]
+            : [];
+        }),
+      );
+      set("built-links", junctionLinks(p.network.corridors, p.effective));
+      sourceData.current.built = p.effective;
+      sourceData.current.builtStationKey = stationGeometryKey;
+    }
     if (!map.getSource("hover-point")) set("hover-point", []);
-    set("preview", p.preview);
-    set("selected-links", p.selection ? junctionLinks(p.network.corridors,
-      selectionParts(p.selection).map(part => ({ ...part, tracks: p.previewTracks }))) : []);
+    if (!map.getSource("preview") || sourceData.current.preview !== p.preview) {
+      set("preview", p.preview);
+      sourceData.current.preview = p.preview;
+    }
     if (
       staticData.current.network !== p.network ||
       staticData.current.demolished !== p.project.demolished ||
@@ -157,81 +185,94 @@ export function MapView(props: Props) {
           .filter((b) => p.project.demolished.includes(b.id))
           .map((b) => feature(b.geometry)),
       );
-    set(
-      "station-built",
-      Object.values(p.project.stations)
-        .map((s) =>
-          stationEnvelope(
-            corridors.get(s.corridorId)!,
-            s,
-            s.lengthMeters,
-            s.platforms,
+    if (!map.getSource("station-built") || sourceData.current.stationBuilt !== p.project.stations) {
+      set(
+        "station-built",
+        Object.values(p.project.stations)
+          .map((s) =>
+            stationEnvelope(
+              corridors.get(s.corridorId)!,
+              s,
+              s.lengthMeters,
+              s.platforms,
+            ),
           ),
-        ),
-    );
-    const controlPoints = p.selection
-      ? [
-          selectionEndpoints(p.selection)[0],
-          ...(p.selection.waypoints || []),
-          selectionEndpoints(p.selection)[1],
-        ]
-      : [];
-    const selectedFeatures = controlPoints.length
-      ? controlPoints.slice(1).flatMap((point, leg) => {
-          const legSelection = routeSelection(
-            p.network.corridors,
-            controlPoints[leg],
-            point,
-            p.network.stations,
-          );
-          return legSelection
-            ? selectionParts(legSelection).flatMap((part) => {
-                const selected = corridors.get(part.corridorId);
-                return selected
-                  ? [{
-                    ...stationAlignedLine(selected, part.start, part.end, displayStations),
-                      properties: {
-                        tracks: p.previewTracks,
-                        electrified: p.previewElectrified,
-                        leg,
-                      },
-                    }]
-                  : [];
-              })
-            : [];
-        })
-      : p.selection
-        ? selectionParts(p.selection).flatMap((part) => {
-            const selected = corridors.get(part.corridorId);
-            return selected
-              ? [{
-                  ...stationAlignedLine(selected, part.start, part.end, displayStations),
-                  properties: {
-                    tracks: p.previewTracks,
-                    electrified: p.previewElectrified,
-                    leg: 0,
-                  },
-                }]
+      );
+      sourceData.current.stationBuilt = p.project.stations;
+    }
+    const selectedKey = `${JSON.stringify(p.selection)}|${p.previewTracks}|${p.previewElectrified ? 1 : 0}|${stationGeometryKey}`;
+    if (!map.getSource("selected") || sourceData.current.selectedKey !== selectedKey) {
+      const controlPoints = p.selection?.waypoints?.length
+        ? [
+            selectionEndpoints(p.selection)[0],
+            ...p.selection.waypoints,
+            selectionEndpoints(p.selection)[1],
+          ]
+        : [];
+      const selectedFeatures = controlPoints.length
+        ? controlPoints.slice(1).flatMap((point, leg) => {
+            const legSelection = routeSelection(
+              p.network.corridors,
+              controlPoints[leg],
+              point,
+              p.network.stations,
+            );
+            return legSelection
+              ? selectionParts(legSelection).flatMap((part) => {
+                  const selected = corridors.get(part.corridorId);
+                  return selected
+                    ? [{
+                        ...stationAlignedLine(selected, part.start, part.end, displayStations),
+                        properties: {
+                          tracks: p.previewTracks,
+                          electrified: p.previewElectrified,
+                          leg,
+                        },
+                      }]
+                    : [];
+                })
               : [];
           })
-        : [];
-    set(
-      "selected",
-      selectedFeatures,
-    );
-    set(
-      "stations",
-      displayStations
-        .map((s) =>
+        : p.selection
+          ? selectionParts(p.selection).flatMap((part) => {
+              const selected = corridors.get(part.corridorId);
+              return selected
+                ? [{
+                    ...stationAlignedLine(selected, part.start, part.end, displayStations),
+                    properties: {
+                      tracks: p.previewTracks,
+                      electrified: p.previewElectrified,
+                      leg: 0,
+                    },
+                  }]
+                : [];
+            })
+          : [];
+      set("selected", selectedFeatures);
+      set("selected-links", p.selection ? junctionLinks(p.network.corridors,
+        selectionParts(p.selection).map(part => ({ ...part, tracks: p.previewTracks }))) : []);
+      sourceData.current.selectedKey = selectedKey;
+    }
+    if (!map.getSource("stations") || sourceData.current.stationMarkerKey !== stationMarkerKey) {
+      set(
+        "stations",
+        displayStations.map((s) =>
           feature(
             {
               type: "Point",
               coordinates: stationCenter(corridors.get(s.corridorId)!, s),
             },
-            { id: s.id, name: s.name, selected: s.id === p.station?.id },
+            {
+              id: s.id,
+              name: s.name,
+              platforms: s.platforms,
+              selected: s.id === p.station?.id,
+            },
           ),
         ),
-    );
+      );
+      sourceData.current.stationMarkerKey = stationMarkerKey;
+    }
     if (!map.getLayer("row-visible")) {
       map.addLayer({ id: "population-fill", type: "fill", source: "population", minzoom: 7,
         paint: { "fill-color": ["interpolate", ["linear"], ["get", "population"], 0, "#fff3d2", 100, "#f4d16b", 1000, "#e3933d", 5000, "#b34631", 15000, "#702434"], "fill-opacity": 0.35 } });
@@ -467,11 +508,42 @@ export function MapView(props: Props) {
         id: "station-points",
         type: "circle",
         source: "stations",
+        layout: {
+          "circle-sort-key": ["get", "platforms"],
+        },
         paint: {
-          "circle-radius": ["case", ["get", "selected"], 7, 4.5],
+          "circle-radius": [
+            "+",
+            ["interpolate", ["linear"], ["zoom"],
+              3, ["interpolate", ["linear"], ["get", "platforms"], 1, 3, 2, 3.5, 4, 5, 8, 7.5, 12, 10],
+              8, ["interpolate", ["linear"], ["get", "platforms"], 1, 4.5, 2, 5, 4, 7, 8, 10, 12, 13],
+            ],
+            ["case", ["get", "selected"], 2, 0],
+          ],
           "circle-color": "#fff",
           "circle-stroke-color": "#235e50",
-          "circle-stroke-width": 2,
+          "circle-stroke-width": ["case", ["get", "selected"], 3, 2],
+        },
+      });
+      map.addLayer({
+        id: "station-major-labels",
+        type: "symbol",
+        source: "stations",
+        minzoom: 5,
+        maxzoom: 8.5,
+        filter: [">=", ["get", "platforms"], 6],
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": ["Open Sans Regular"],
+          "text-size": ["interpolate", ["linear"], ["get", "platforms"], 6, 10, 12, 13],
+          "text-offset": [0, 1.4],
+          "text-anchor": "top",
+          "symbol-sort-key": ["-", 20, ["get", "platforms"]],
+        },
+        paint: {
+          "text-color": p.dark ? "#d8e6df" : "#315448",
+          "text-halo-color": p.dark ? "#202b28" : "#fff",
+          "text-halo-width": 1.8,
         },
       });
       map.addLayer({
@@ -496,8 +568,7 @@ export function MapView(props: Props) {
     staticData.current = {
       network: p.network,
       demolished: p.project.demolished,
-      stationProject: p.project.stations,
-      station: p.station,
+      stationGeometryKey,
     };
     for (const id of ["population-fill", "population-outline", "population-labels"]) map.setLayoutProperty(id, "visibility", p.layers.population && p.populationMode === "density" ? "visible" : "none");
     for (const id of ["coverage-fill", "coverage-outline"]) map.setLayoutProperty(id, "visibility", p.layers.population && p.populationMode === "catchment" ? "visible" : "none");

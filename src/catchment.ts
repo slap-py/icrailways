@@ -10,7 +10,7 @@ export interface CatchmentCell extends Feature<Polygon> {
   properties: PopulationCell["properties"] & { share: number; residents: number; mode: AccessMode; minutes: number; walkShare: number };
 }
 export interface Catchment { cells: CatchmentCell[]; residents: number; modes: Record<AccessMode, number>; competitors: number }
-export type CoverageCell = Feature<Polygon, PopulationCell["properties"] & { share: number; residents: number; stationName: string }>;
+export type CoverageCell = Feature<Polygon, PopulationCell["properties"] & { share: number; residents: number; stationId: string; stationName: string }>;
 const km = (a: Position, b: Position) => distance(a, b);
 const modes: AccessMode[] = ["walk", "cycle", "transit", "car"];
 const emptyModes = (): Record<AccessMode, number> => ({ walk: 0, cycle: 0, transit: 0, car: 0 });
@@ -82,7 +82,7 @@ export function calculateCatchments(cells: PopulationCell[], stations: Station[]
         sums[i].minutes += w.minutes * share;
       });
     }
-    let coverageShare = 0, strongest = -1, stationName = "";
+    let coverageShare = 0, strongest = -1, stationId = "", stationName = "";
     sums.forEach((sum, i) => {
       if (!sum.share) return;
       const s = nearby[i].station, result = byStation[s.id];
@@ -92,9 +92,9 @@ export function calculateCatchments(cells: PopulationCell[], stations: Station[]
       result.residents += residents;
       for (const m of modes) result.modes[m] += cell.properties.population * sum.modes[m];
       coverageShare += sum.share;
-      if (sum.share > strongest) { strongest = sum.share; stationName = s.name; }
+      if (sum.share > strongest) { strongest = sum.share; stationId = s.id; stationName = s.name; }
     });
-    if (coverageShare) coverage.push({ ...cell, properties: { ...cell.properties, share: coverageShare, residents: cell.properties.population * coverageShare, stationName } });
+    if (coverageShare) coverage.push({ ...cell, properties: { ...cell.properties, share: coverageShare, residents: cell.properties.population * coverageShare, stationId, stationName } });
   }
   return { byStation, coverage };
 }

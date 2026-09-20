@@ -13,6 +13,7 @@ import {
   lineOffset,
   lineString,
   nearestPointOnLine,
+  simplify,
 } from "@turf/turf";
 import type {
   Feature,
@@ -251,7 +252,13 @@ export function envelope(
   end: number,
   width: number,
 ) {
-  return buffer(slice(c, start, end), width / 2, {
+  const line = slice(c, start, end);
+  // Sub-metre simplification removes dense OSM shape points before the costly
+  // polygon buffer without changing the planning-scale footprint materially.
+  const previewLine = line.geometry.coordinates.length > 500
+    ? simplify(line, { tolerance: 0.000005, highQuality: false })
+    : line;
+  return buffer(previewLine, width / 2, {
     units: "meters",
     steps: 4,
   })!;

@@ -127,7 +127,7 @@ export default function App() {
     }
   }, [toast]);
   const notify = (message: string) => setToast(message);
-  const effective = useMemo(() => effectiveSections(project), [project]);
+  const effective = useMemo(() => effectiveSections(project), [project.sections, project.expansions]);
   const parts = selection ? selectionParts(selection) : [];
   const routeEndpoints = selection ? selectionEndpoints(selection) : undefined;
   const corridor = network?.corridors.find((c) => c.id === parts[0]?.corridorId);
@@ -147,6 +147,10 @@ export default function App() {
   }, [stationRecord, stationCorridor, stationPosition, stationOffset]);
   const stationEditable = !!draftStation || stationEditing;
   const catchmentStations = useMemo(() => [...Object.values(project.stations).filter(s => s.id !== station?.id), ...(station ? [{ ...station, name: stationName.trim() }] : [])], [project.stations, station, stationName]);
+  const catchmentGeometryKey = catchmentStations
+    .map(s => `${s.id}:${s.coordinates[0].toFixed(6)},${s.coordinates[1].toFixed(6)}`)
+    .sort().join("|");
+  const catchmentNamesKey = catchmentStations.map(s => `${s.id}:${s.name}`).sort().join("|");
   const population = usePopulationAreas(catchmentStations.map(s => surroundingBounds(s.coordinates, 40)));
   const [transit, setTransit] = useState<{ stops: TransitStop[]; status: string }>({ stops: [], status: "Loading OSM stops…" });
   useEffect(() => {
@@ -157,9 +161,23 @@ export default function App() {
       .catch(() => setTransit({ stops: [], status: "OSM stops unavailable; walk, cycle and car only" }));
   }, []);
   const transitIndex = useMemo(() => stopIndex(transit.stops), [transit.stops]);
-  const catchments = useMemo(() => !population.loading && !population.error
+  const calculatedCatchments = useMemo(() => !population.loading && !population.error
     ? calculateCatchments(population.cells, catchmentStations, transitIndex) : null,
-  [catchmentStations, population.cells, population.loading, population.error, transitIndex]);
+  [catchmentGeometryKey, population.cells, population.loading, population.error, transitIndex]);
+  const catchments = useMemo(() => {
+    if (!calculatedCatchments) return null;
+    const names = new Map(catchmentStations.map(s => [s.id, s.name]));
+    return {
+      ...calculatedCatchments,
+      coverage: calculatedCatchments.coverage.map(cell => ({
+        ...cell,
+        properties: {
+          ...cell.properties,
+          stationName: names.get(cell.properties.stationId) || cell.properties.stationName,
+        },
+      })),
+    };
+  }, [calculatedCatchments, catchmentNamesKey]);
   const catchment = station ? catchments?.byStation[station.id] || null : null;
   const expansion = tool === "passing" || tool === "overtaking";
   const previewTracks = expansion ? (tool === "passing" ? 2 : 4) : tracks;
@@ -854,12 +872,9 @@ export default function App() {
             {station ? (
               <>
                 {oldStation && !stationEditing && (
-                  <div className="station-readonly">
-                    <p>This built station is locked to prevent accidental moves or resizing.</p>
-                    <button className="primary full" onClick={() => setStationEditing(true)}>
-                      <Pencil size={15} /> Edit station
-                    </button>
-                  </div>
+                  <button className="primary full station-edit-button" onClick={() => setStationEditing(true)}>
+                    <Pencil size={15} /> Edit station
+                  </button>
                 )}
                 <div className="editor-section">
                   <label className="field-label" htmlFor="station-name">
@@ -877,7 +892,7 @@ export default function App() {
                 <div className="editor-section catchment-summary">
                   <div className="field-label">CATCHMENT</div>
                   {population.loading ? <p className="helper">Loading SCB population…</p> : population.error ? <p role="status" className="helper">{population.error}. Catchment unavailable.</p> : catchment && <>
-                    <strong className="catchment-total">{Math.round(catchment.residents).toLocaleString()} <small>weighted residents</small></strong>
+                    <strong className="catchment-total">{Math.round(catchment.residents).toLocaleString()} <small>residents</small></strong>
                     <div className="catchment-modes">{(["walk", "cycle", "transit", "car"] as const).map(mode => <span key={mode}><i className={`mode-dot ${mode}`} />{mode === "transit" ? "Feeder" : mode[0].toUpperCase() + mode.slice(1)}<b>{Math.round(catchment.modes[mode]).toLocaleString()}</b></span>)}</div>
                   </>}
                 </div>
