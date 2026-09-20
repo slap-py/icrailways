@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { length, lineString } from "@turf/turf";
-import { routeSelection } from "./routing";
+import { routeSelection, routeSelectionVia } from "./routing";
 import type { Corridor } from "./types";
 
 function corridor(id: string, coordinates: number[][]): Corridor {
@@ -104,4 +104,17 @@ test("same-line selections may take a shorter connected path regardless of data 
   assert.ok(route?.parts);
   assert.ok(route.parts.some(p => p.corridorId === "shortcut"));
   assert.ok(route.parts.reduce((sum, p) => sum + p.end - p.start, 0) < 1500);
+});
+
+test("waypoints are retained while each route leg is combined", () => {
+  const main = corridor("main", [[15, 59], [15.02, 59]]);
+  const branch = corridor("branch", [[15.01, 59], [15.01, 59.01]]);
+  const start = { corridorId: "main", position: 100 };
+  const waypoint = { corridorId: "branch", position: 500 };
+  const end = { corridorId: "main", position: main.length - 100 };
+  const route = routeSelectionVia([main, branch], [start, waypoint, end]);
+  assert.ok(route);
+  assert.deepEqual(route.waypoints, [waypoint]);
+  assert.deepEqual(route.endpoints, [start, end]);
+  assert.ok(route.parts?.some((part) => part.corridorId === "branch"));
 });

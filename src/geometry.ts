@@ -7,11 +7,12 @@ import {
   booleanIntersects,
   buffer,
   destination,
+  distance,
   feature,
   lineSliceAlong,
+  lineOffset,
   lineString,
   nearestPointOnLine,
-  polygon,
 } from "@turf/turf";
 import type {
   Feature,
@@ -42,6 +43,128 @@ export const snap = (c: Corridor, coordinates: Position) =>
     ),
   );
 
+export function stationDirection(c: Corridor, position: number) {
+  return bearing(pointAt(c, position - 25), pointAt(c, position + 25));
+}
+
+export function stationCenter(c: Corridor, station: Pick<Station, "position" | "lateralOffsetMeters">) {
+  const onRow = pointAt(c, station.position);
+  const offset = station.lateralOffsetMeters || 0;
+  return offset
+    ? destination(onRow, Math.abs(offset), stationDirection(c, station.position) + (offset > 0 ? 90 : -90), {
+        units: "meters",
+      }).geometry.coordinates
+    : onRow;
+}
+
+export function stationEnds(
+  c: Corridor,
+  station: Pick<Station, "position" | "lateralOffsetMeters">,
+  lengthMeters: number,
+) {
+  const coordinates = stationPlatformLine(c, station, lengthMeters).geometry.coordinates;
+  return [coordinates[0], coordinates[coordinates.length - 1]];
+}
+
+export function stationPlatformLine(
+  c: Corridor,
+  station: Pick<Station, "position" | "lateralOffsetMeters">,
+  lengthMeters: number,
+) {
+  const line = slice(c, station.position - lengthMeters / 2, station.position + lengthMeters / 2);
+  const offset = station.lateralOffsetMeters || 0;
+  return offset ? lineOffset(line, offset, { units: "meters" }) : line;
+}
+
+const corridorMeasures = new WeakMap<Corridor, { position: number; coordinates: Position }[]>();
+function measuredCoordinates(c: Corridor) {
+  let cached = corridorMeasures.get(c);
+  if (cached) return cached;
+  let meters = 0;
+  cached = c.geometry.coordinates.map((coordinates, index, all) => {
+    if (index) meters += distance(all[index - 1], coordinates, { units: "meters" });
+    return { position: meters, coordinates };
+  });
+  const scale = meters ? c.length / meters : 1;
+  cached = cached.map(item => ({ ...item, position: item.position * scale }));
+  corridorMeasures.set(c, cached);
+  return cached;
+}
+
+/** Display alignment that eases the ROW toward any laterally shifted station. */
+export function stationAlignedLine(
+  c: Corridor,
+  start: number,
+  end: number,
+  stations: Station[],
+  approachMeters = 120,
+) {
+  const relevant = stations.filter(station =>
+    station.corridorId === c.id &&
+    !!station.lateralOffsetMeters &&
+    station.position + station.lengthMeters / 2 + approachMeters >= start &&
+    station.position - station.lengthMeters / 2 - approachMeters <= end,
+  );
+  if (!relevant.length) return slice(c, start, end);
+
+  const entries = measuredCoordinates(c)
+    .filter(item => item.position > start && item.position < end)
+    .map(item => ({ ...item }));
+  entries.push({ position: start, coordinates: pointAt(c, start) });
+  entries.push({ position: end, coordinates: pointAt(c, end) });
+  for (const station of relevant) {
+    const from = Math.max(start, station.position - station.lengthMeters / 2 - approachMeters);
+    const to = Math.min(end, station.position + station.lengthMeters / 2 + approachMeters);
+    for (let position = from; position <= to; position += 20)
+      entries.push({ position, coordinates: pointAt(c, position) });
+    for (const position of [
+      station.position - station.lengthMeters / 2,
+      station.position,
+      station.position + station.lengthMeters / 2,
+      to,
+    ]) if (position >= start && position <= end)
+      entries.push({ position, coordinates: pointAt(c, position) });
+  }
+  entries.sort((a, b) => a.position - b.position);
+  const unique = entries.filter((item, index) => !index || item.position - entries[index - 1].position > 0.01);
+  const coordinates = unique.map(item => {
+    let strongest = 0;
+    let offset = 0;
+    for (const station of relevant) {
+      const half = station.lengthMeters / 2;
+      const distanceFromCenter = Math.abs(item.position - station.position);
+      const weight = distanceFromCenter <= half
+        ? 1
+        : Math.max(0, 1 - (distanceFromCenter - half) / approachMeters);
+      if (weight > strongest) {
+        strongest = weight;
+        offset = (station.lateralOffsetMeters || 0) * weight;
+      }
+    }
+    return offset
+      ? destination(item.coordinates, Math.abs(offset), stationDirection(c, item.position) + (offset > 0 ? 90 : -90), { units: "meters" }).geometry.coordinates
+      : item.coordinates;
+  });
+  return lineString(coordinates);
+}
+
+/** Projects a freely dragged station centre onto its corridor and retains the signed lateral error. */
+export function stationPlacement(c: Corridor, coordinates: Position, maxOffsetMeters = 250) {
+  const position = snap(c, coordinates);
+  const onRow = pointAt(c, position);
+  const meters = Math.min(maxOffsetMeters, distance(onRow, coordinates, { units: "meters" }));
+  if (meters < 0.1) return { position, lateralOffsetMeters: 0, coordinates: onRow };
+  const direction = stationDirection(c, position);
+  const right = destination(onRow, meters, direction + 90, { units: "meters" }).geometry.coordinates;
+  const left = destination(onRow, meters, direction - 90, { units: "meters" }).geometry.coordinates;
+  const lateralOffsetMeters = distance(right, coordinates, { units: "meters" }) <=
+    distance(left, coordinates, { units: "meters" }) ? meters : -meters;
+  const center = destination(onRow, meters, direction + (lateralOffsetMeters > 0 ? 90 : -90), {
+    units: "meters",
+  }).geometry.coordinates;
+  return { position, lateralOffsetMeters, coordinates: center };
+}
+
 export function stationOnSections(
   station: Station,
   corridors: Corridor[],
@@ -50,7 +173,7 @@ export function stationOnSections(
 ) {
   const stationCorridor = corridors.find((c) => c.id === station.corridorId);
   const coordinates = stationCorridor
-    ? pointAt(stationCorridor, station.position)
+    ? stationCenter(stationCorridor, station)
     : station.coordinates;
   return sections.some((section) => {
     const corridor = corridors.find((c) => c.id === section.corridorId);
@@ -139,29 +262,11 @@ export function stationEnvelope(
   length: number,
   platforms: number,
 ) {
-  const center = pointAt(c, station.position);
-  const direction = bearing(
-    pointAt(c, station.position - 25),
-    pointAt(c, station.position + 25),
-  );
   const halfWidth = (8 + platforms * 6) / 2;
-  const ends = [-length / 2, length / 2].map(
-    (d) =>
-      destination(center, Math.abs(d), direction + (d < 0 ? 180 : 0), {
-        units: "meters",
-      }).geometry.coordinates,
-  );
-  const corners = [
-    [0, -90],
-    [0, 90],
-    [1, 90],
-    [1, -90],
-  ].map(
-    ([i, angle]) =>
-      destination(ends[i], halfWidth, direction + angle, { units: "meters" })
-        .geometry.coordinates,
-  );
-  return polygon([[...corners, corners[0]]]);
+  return buffer(stationPlatformLine(c, station, length), halfWidth, {
+    units: "meters",
+    steps: 4,
+  })!;
 }
 const boundsCache = new WeakMap<object, number[]>();
 function intersectsBounds(shape: number[], geometry: object) {

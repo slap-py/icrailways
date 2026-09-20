@@ -1,3 +1,4 @@
+import { electrificationCost } from "./cost";
 import type {
   Project,
   Section,
@@ -55,6 +56,7 @@ export function replaceSection(
   selection: Selection,
   tracks: TrackCount | 0,
   maxSpeedKph: number,
+  electrified = false,
 ): Project {
   const parts = selectionParts(selection);
   let sections = project.sections;
@@ -73,6 +75,7 @@ export function replaceSection(
             id: crypto.randomUUID(),
             tracks,
             maxSpeedKph,
+            electrified,
           }))
         : []),
     ],
@@ -151,6 +154,14 @@ export const expansionCost = (
   (distance / 1000) *
   (type === "passing" ? 800_000 : 1_300_000) *
   (1 + Math.max(0, speed - 120) / 200);
+export function expansionPowerCost(project: Project, selection: Selection, type: Expansion["type"]) {
+  return selectionParts(selection).reduce((total, part) => total + project.sections
+    .filter(s => s.corridorId === part.corridorId && s.electrified)
+    .reduce((sum, s) => sum + electrificationCost(
+      Math.max(0, Math.min(s.end, part.end) - Math.max(s.start, part.start)),
+      type === "passing" ? 1 : 2,
+    ), 0), 0);
+}
 export function removeExpansion(
   project: Project,
   selection: Selection,
@@ -166,9 +177,10 @@ export function sectionMatches(
   selection: Selection,
   tracks: number,
   speed: number,
+  electrified = false,
 ) {
   return selectionParts(selection).every((part) =>
-    sectionPartMatches(sections, part, tracks, speed),
+    sectionPartMatches(sections, part, tracks, speed, electrified),
   );
 }
 function sectionPartMatches(
@@ -176,6 +188,7 @@ function sectionPartMatches(
   selection: SelectionPart,
   tracks: number,
   speed: number,
+  electrified: boolean,
 ) {
   let cursor = selection.start;
   const parts = sections
@@ -187,7 +200,8 @@ function sectionPartMatches(
     if (
       s.start > cursor + 0.01 ||
       s.tracks !== tracks ||
-      s.maxSpeedKph !== speed
+      s.maxSpeedKph !== speed ||
+      s.electrified !== electrified
     )
       return false;
     cursor = Math.max(cursor, s.end);

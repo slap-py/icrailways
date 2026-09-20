@@ -5,63 +5,15 @@ import {
   distance,
   length,
   lineString,
+  lineSliceAlong,
   nearestPointOnLine,
 } from "@turf/turf";
 import type { Position } from "geojson";
 import type { Corridor, Network } from "./types";
 
-const PARALLEL_DISTANCE_METERS = 45;
+import { centerParallelTracks } from "./centerline";
+
 const JOIN_DISTANCE_METERS = 55;
-
-function boxesOverlap(a: number[], b: number[], padding = 0.001) {
-  return (
-    a[0] <= b[2] + padding &&
-    a[2] >= b[0] - padding &&
-    a[1] <= b[3] + padding &&
-    a[3] >= b[1] - padding
-  );
-}
-
-function samples(corridor: Corridor) {
-  const count = Math.max(5, Math.min(25, Math.ceil(corridor.length / 500)));
-  return Array.from({ length: count }, (_, i) =>
-    along(corridor.geometry, (corridor.length * i) / (count - 1), {
-      units: "meters",
-    }).geometry.coordinates,
-  );
-}
-
-const corridorBoundsCache = new WeakMap<Corridor, number[]>();
-function corridorBounds(corridor: Corridor) {
-  let bounds = corridorBoundsCache.get(corridor);
-  if (!bounds) {
-    bounds = bbox(corridor.geometry);
-    corridorBoundsCache.set(corridor, bounds);
-  }
-  return bounds;
-}
-
-function isParallelDuplicate(corridor: Corridor, longer: Corridor) {
-  if (!boxesOverlap(corridorBounds(corridor), corridorBounds(longer))) return false;
-  const points = samples(corridor);
-  let nearby = 0;
-  for (const point of points) {
-    const d = nearestPointOnLine(longer.geometry, point, {
-      units: "meters",
-    }).properties.dist;
-    if (d <= PARALLEL_DISTANCE_METERS) nearby++;
-  }
-  return nearby / points.length >= 0.8;
-}
-
-function removeParallelDuplicates(corridors: Corridor[]) {
-  const kept: Corridor[] = [];
-  for (const corridor of [...corridors].sort((a, b) => b.length - a.length)) {
-    if (!kept.some((longer) => isParallelDuplicate(corridor, longer)))
-      kept.push(corridor);
-  }
-  return kept;
-}
 
 const turnAngle = (a: number, b: number) =>
   Math.abs(((b - a + 540) % 360) - 180);
@@ -136,12 +88,20 @@ function mergeConnectedCorridors(corridors: Corridor[]) {
     const a = work[best.a],
       b = work[best.b],
       primary = a.length >= b.length ? a : b,
-      coordinates = [
-        ...best.aCoordinates,
-        ...(best.gap < 0.1
-          ? best.bCoordinates.slice(1)
-          : best.bCoordinates),
-      ];
+      // Ease small gaps into the alignment instead of adding a sideways or
+      // backwards connector between the old track endpoints.
+      ease = Math.min(30, Math.max(5, best.gap * 2)),
+      aLine = lineString(best.aCoordinates),
+      bLine = lineString(best.bCoordinates),
+      aLength = length(aLine, { units: "meters" }),
+      bLength = length(bLine, { units: "meters" }),
+      aCoordinates = best.gap > 0.1 && aLength > ease * 2
+        ? lineSliceAlong(aLine, 0, aLength - ease, { units: "meters" }).geometry.coordinates
+        : best.aCoordinates,
+      bCoordinates = best.gap > 0.1 && bLength > ease * 2
+        ? lineSliceAlong(bLine, ease, bLength, { units: "meters" }).geometry.coordinates
+        : best.bCoordinates,
+      coordinates = [...aCoordinates, ...(best.gap < 0.1 ? bCoordinates.slice(1) : bCoordinates)];
     const geometry = lineString(coordinates).geometry;
     const merged: Corridor = {
       id: primary.id,
@@ -160,10 +120,106 @@ function mergeConnectedCorridors(corridors: Corridor[]) {
   }
 }
 
+function retainSharedJunctions(original: Corridor[], corridors: Corridor[]) {
+  const vertices = new Map<string, { point: Position; owners: Set<Corridor> }>();
+  for (const corridor of original) for (const point of corridor.geometry.coordinates) {
+    const key = point.join(",");
+    const entry = vertices.get(key) || { point, owners: new Set<Corridor>() };
+    entry.owners.add(corridor);
+    vertices.set(key, entry);
+  }
+  // Centering moves vertices. Restore only junctions that actually shared an
+  // OSM vertex, including interior intersections; proximity alone is not proof.
+  for (const { point, owners } of vertices.values()) {
+    if (owners.size < 2) continue;
+    const ids = new Set([...owners].flatMap(c => c.osmWayIds));
+    const names = new Set([...owners].map(c => c.id));
+    const candidates = corridors.flatMap(c => {
+      if (!names.has(c.id) && !c.osmWayIds.some(id => ids.has(id))) return [];
+      const bounds = bbox(c.geometry);
+      const dy = 25 / 111195, dx = dy / Math.cos(point[1] * Math.PI / 180);
+      if (point[0] < bounds[0] - dx || point[0] > bounds[2] + dx ||
+          point[1] < bounds[1] - dy || point[1] > bounds[3] + dy) return [];
+      const near = nearestPointOnLine(c.geometry, point, { units: "meters" });
+      return near.properties.dist <= 25 ? [{ c, near }] : [];
+    }).sort((a, b) => b.c.length - a.c.length);
+    if (candidates.length < 2) continue;
+    const anchor = candidates[0].near.geometry.coordinates;
+    for (const { c } of candidates) {
+      const near = nearestPointOnLine(c.geometry, anchor, { units: "meters" });
+      const coordinates = c.geometry.coordinates;
+      const endpoint = distance(coordinates[0], anchor, { units: "meters" }) < 25 ? 0
+        : distance(coordinates.at(-1)!, anchor, { units: "meters" }) < 25 ? 1 : undefined;
+      if (endpoint !== undefined) {
+        easeEndpoint(c, endpoint, anchor);
+        continue;
+      }
+      const i = near.properties.index;
+      if (distance(coordinates[i], anchor, { units: "meters" }) < 0.01) coordinates[i] = anchor;
+      else if (i + 1 < coordinates.length && distance(coordinates[i + 1], anchor, { units: "meters" }) < 0.01) coordinates[i + 1] = anchor;
+      else coordinates.splice(i + 1, 0, anchor);
+      c.length = length(lineString(coordinates), { units: "meters" });
+    }
+  }
+}
+
+// Move a short approach gradually to its junction, leaving the through line fixed.
+function easeEndpoint(c: Corridor, end: 0 | 1, anchor: Position) {
+  const coordinates = end === 0 ? c.geometry.coordinates : [...c.geometry.coordinates].reverse();
+  const line = lineString(coordinates);
+  const total = length(line, { units: "meters" });
+  const span = Math.min(100, total / 2);
+  const dx = anchor[0] - coordinates[0][0], dy = anchor[1] - coordinates[0][1];
+  const approach: Position[] = [];
+  for (let d = 0; d < span; d += 8) {
+    const p = along(line, d, { units: "meters" }).geometry.coordinates;
+    const t = d / span, weight = 1 - t * t * (3 - 2 * t);
+    approach.push([p[0] + dx * weight, p[1] + dy * weight]);
+  }
+  const tail = lineSliceAlong(line, span, total, { units: "meters" }).geometry.coordinates;
+  const joined = [...approach, ...tail];
+  c.geometry = lineString(end === 0 ? joined : joined.reverse()).geometry;
+  c.length = length(lineString(c.geometry.coordinates), { units: "meters" });
+}
+
+function connectCenteredBranches(corridors: Corridor[]) {
+  for (const branch of [...corridors].sort((a, b) => a.length - b.length)) {
+    for (const end of [0, 1] as const) {
+      const p = end === 0 ? branch.geometry.coordinates[0] : branch.geometry.coordinates.at(-1)!;
+      let best: { anchor: Position; gap: number; target: Corridor } | undefined;
+      for (const target of corridors) {
+        // Shared source ways establish a collapsed parallel-track relationship.
+        // Mere proximity would also connect unrelated/grade-separated railways.
+        if (target === branch || target.length <= branch.length || !target.osmWayIds.some(id => branch.osmWayIds.includes(id))) continue;
+        const bounds = bbox(target.geometry), dy = 25 / 111195, dx = dy / Math.cos(p[1] * Math.PI / 180);
+        if (p[0] < bounds[0] - dx || p[0] > bounds[2] + dx || p[1] < bounds[1] - dy || p[1] > bounds[3] + dy) continue;
+        const near = nearestPointOnLine(target.geometry, p, { units: "meters" });
+        if (near.properties.dist <= 25 && (!best || near.properties.dist < best.gap)) best = { anchor: near.geometry.coordinates, gap: near.properties.dist, target };
+      }
+      if (!best || best.gap < 0.01) continue;
+      easeEndpoint(branch, end, best.anchor);
+      const near = nearestPointOnLine(best.target.geometry, best.anchor, { units: "meters" });
+      best.target.geometry.coordinates.splice(near.properties.index + 1, 0, best.anchor);
+    }
+  }
+}
+
+export function removeDepotTails(network: Network): Corridor[] {
+  return network.corridors.filter(c => {
+    if (c.length > 2500 || !/^(Connecting railway|Regional railway)$|depot|depå|verkstad|bangård/i.test(c.name)) return true;
+    if (network.stations.some(s => nearestPointOnLine(c.geometry, s.coordinates, { units: "meters" }).properties.dist < 250)) return true;
+    // Keep short links joining two other corridors; remove only local dead ends.
+    return [c.geometry.coordinates[0], c.geometry.coordinates.at(-1)!].every(p =>
+      network.corridors.some(other => other !== c && nearestPointOnLine(other.geometry, p, { units: "meters" }).properties.dist < 30));
+  });
+}
+
 export function simplifyNetwork(network: Network): Network {
   const corridors = mergeConnectedCorridors(
-    removeParallelDuplicates(network.corridors),
+    centerParallelTracks(network.corridors),
   );
+  retainSharedJunctions(network.corridors, corridors);
+  connectCenteredBranches(corridors);
   const corridorBounds = corridors.map((corridor) => ({
     corridor,
     bounds: bbox(corridor.geometry),

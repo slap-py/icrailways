@@ -1,0 +1,50 @@
+{
+  "source": "SCB WFS stat:Tatorter_2023; properties copied without modification",
+  "examples": [
+    {
+      "objectid": 497,
+      "uuid": "e5fde772-c6f2-4339-ad8a-983cb1786404",
+      "tatortskod": "0581TC116",
+      "tatort": "Norrköping",
+      "kommun": "0581",
+      "kommunnamn": "Norrköping",
+      "lan": "05",
+      "lannamn": "Östergötland",
+      "area_ha": 3851,
+      "bef": 98229,
+      "ar": "2023",
+      "validfrom": "2023-12-31",
+      "validto": "2025-12-31"
+    },
+    {
+      "objectid": 600,
+      "uuid": "016e7185-27db-4a28-9e2f-da2161e11409",
+      "tatortskod": "1861TC101",
+      "tatort": "Hallsberg",
+      "kommun": "1861",
+      "kommunnamn": "Hallsberg",
+      "lan": "18",
+      "lannamn": "Örebro",
+      "area_ha": 975,
+      "bef": 8321,
+      "ar": "2023",
+      "validfrom": "2023-12-31",
+      "validto": "2025-12-31"
+    },
+    {
+      "objectid": 1721,
+      "uuid": "377d87a5-e524-4b69-8544-9f02ceea13cf",
+      "tatortskod": "1881TC103",
+      "tatort": "Kumla",
+      "kommun": "1881",
+      "kommunnamn": "Kumla",
+      "lan": "18",
+      "lannamn": "Örebro",
+      "area_ha": 1203,
+      "bef": 17889,
+      "ar": "2023",
+      "validfrom": "2023-12-31",
+      "validto": "2025-12-31"
+    }
+  ]
+}

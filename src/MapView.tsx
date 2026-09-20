@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import mapWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 maplibregl.setWorkerUrl(mapWorkerUrl);
@@ -11,13 +11,19 @@ import {
   pointAt,
   slice,
   snap,
+  stationAlignedLine,
+  stationCenter,
+  stationEnds,
   stationEnvelope,
-  stationOnSections,
 } from "./geometry";
 import type { Network, Project, Selection, Section, Station, RouteEndpoint, TrackCount } from "./types";
 import { compactMoney } from "./cost";
+import { stationPreviews } from "./stations";
+import type { Catchment, TransitStop, PopulationCell, CoverageCell } from "./catchment";
+import { usePopulation } from "./population";
 import { selectionParts } from "./construction";
 import { selectionEndpoints } from "./routing";
+import { routeSelection } from "./routing";
 import "maplibre-gl/dist/maplibre-gl.css";
 interface Props {
   network: Network;
@@ -27,42 +33,77 @@ interface Props {
   effective: Section[];
   preview: Feature<Polygon | MultiPolygon>[];
   previewTracks: TrackCount;
+  previewElectrified: boolean;
   affected: string[];
   blocked: string[];
   dark: boolean;
-  layers: { row: boolean; buildings: boolean; roads: boolean };
+  layers: { row: boolean; buildings: boolean; roads: boolean; population: boolean; catchment: boolean; transit: boolean };
+  catchment: Catchment | null;
+  coverage: CoverageCell[] | null;
+  populationMode: "density" | "catchment";
+  coverageStatus: string;
+  transitStops: TransitStop[];
   station: Station | undefined;
+  stationEditable: boolean;
   constructing: boolean;
   focus: { id: string; nonce: number } | null;
   onCorridor: (id: string, position: number) => void;
   onStation: (id: string) => void;
   onHandle: (end: "start" | "end", target: RouteEndpoint) => void;
+  onWaypoint: (index: number, target: RouteEndpoint | null) => void;
+  onStationMove: (coordinates: number[]) => void;
+  onStationResize: (end: "start" | "end", position: number) => void;
   onReady: () => void;
 }
 export function MapView(props: Props) {
+  const [populationBounds, setPopulationBounds] = useState<[number, number, number, number] | null>(null);
+  const population = usePopulation(props.layers.population && props.populationMode === "density" ? populationBounds : null);
+  const populationRef = useRef(population);
+  const sourceData = useRef<{ population?: PopulationCell[]; catchment?: Catchment | null; stops?: TransitStop[]; coverage?: CoverageCell[] | null }>({});
+  populationRef.current = population;
   const container = useRef<HTMLDivElement>(null),
     mapRef = useRef<GLMap | null>(null),
     latest = useRef(props),
     markers = useRef<maplibregl.Marker[]>([]),
     dragging = useRef(false),
+    routeDrag = useRef<{ leg: number; x: number; y: number } | null>(null),
+    suppressClick = useRef(false),
     styleReady = useRef(false),
-    staticData = useRef<{ network?: Network; demolished?: string[] }>({});
+    staticData = useRef<{ network?: Network; demolished?: string[]; stationProject?: Project["stations"]; station?: Station }>({});
   latest.current = props;
   const render = () => {
     const map = mapRef.current;
     if (!map || !styleReady.current) return;
     const p = latest.current;
     const corridors = new Map(p.network.corridors.map((c) => [c.id, c]));
+    const displayStations = stationPreviews(p.project.stations, p.station);
     const set = (id: string, features: Feature[]) => {
       const data = featureCollection(features);
       if (map.getSource(id)) (map.getSource(id) as GeoJSONSource).setData(data);
-      else map.addSource(id, { type: "geojson", data });
+      else map.addSource(id, { type: "geojson", data, ...(id === "coverage" ? { attribution: 'Population © <a href="https://www.scb.se/vara-tjanster/oppna-data/oppna-geodata/statistik-pa-rutor/">SCB 2025</a> (CC0)' } : {}) });
     };
-    if (staticData.current.network !== p.network || !map.getSource("row"))
+    // Display sources are independent of construction, costs and saved projects.
+    const populationData = populationRef.current.cells;
+    const source = map.getSource("population") as GeoJSONSource | undefined;
+    if (!source) map.addSource("population", { type: "geojson", data: featureCollection(populationData), attribution: 'Population © <a href="https://www.scb.se/vara-tjanster/oppna-data/oppna-geodata/statistik-pa-rutor/">SCB 2025</a> (CC0)' });
+    else if (sourceData.current.population !== populationData) source.setData(featureCollection(populationData));
+    if (!map.getSource("catchment") || sourceData.current.catchment !== p.catchment) set("catchment", p.catchment?.cells || []);
+    if (!map.getSource("coverage") || sourceData.current.coverage !== p.coverage) set("coverage", p.coverage || []);
+    if (!map.getSource("transit-stops") || sourceData.current.stops !== p.transitStops) set("transit-stops", p.transitStops.map(s => feature({ type: "Point", coordinates: s.coordinates }, { id: s.id })));
+    sourceData.current = { population: populationData, catchment: p.catchment, stops: p.transitStops, coverage: p.coverage };
+    if (
+      staticData.current.network !== p.network ||
+      staticData.current.stationProject !== p.project.stations ||
+      staticData.current.station !== p.station ||
+      !map.getSource("row")
+    )
       set(
         "row",
         p.network.corridors.map((c) =>
-          feature(c.geometry, { id: c.id, name: c.name }),
+          ({
+            ...stationAlignedLine(c, 0, c.length, displayStations),
+            properties: { id: c.id, name: c.name },
+          }),
         ),
       );
     if (
@@ -88,11 +129,12 @@ export function MapView(props: Props) {
         return c
           ? [
               {
-                ...slice(c, s.start, s.end),
+                ...stationAlignedLine(c, s.start, s.end, displayStations),
                 properties: {
                   id: c.id,
                   tracks: s.tracks,
                   speed: s.maxSpeedKph,
+                  electrified: s.electrified,
                 },
               },
             ]
@@ -117,59 +159,97 @@ export function MapView(props: Props) {
       );
     set(
       "station-built",
-      p.network.stations
-        .filter((s) => p.project.stations[s.id])
+      Object.values(p.project.stations)
         .map((s) =>
           stationEnvelope(
             corridors.get(s.corridorId)!,
             s,
-            p.project.stations[s.id].lengthMeters,
-            p.project.stations[s.id].platforms,
+            s.lengthMeters,
+            s.platforms,
           ),
         ),
     );
-    set(
-      "selected",
-      p.selection
+    const controlPoints = p.selection
+      ? [
+          selectionEndpoints(p.selection)[0],
+          ...(p.selection.waypoints || []),
+          selectionEndpoints(p.selection)[1],
+        ]
+      : [];
+    const selectedFeatures = controlPoints.length
+      ? controlPoints.slice(1).flatMap((point, leg) => {
+          const legSelection = routeSelection(
+            p.network.corridors,
+            controlPoints[leg],
+            point,
+            p.network.stations,
+          );
+          return legSelection
+            ? selectionParts(legSelection).flatMap((part) => {
+                const selected = corridors.get(part.corridorId);
+                return selected
+                  ? [{
+                    ...stationAlignedLine(selected, part.start, part.end, displayStations),
+                      properties: {
+                        tracks: p.previewTracks,
+                        electrified: p.previewElectrified,
+                        leg,
+                      },
+                    }]
+                  : [];
+              })
+            : [];
+        })
+      : p.selection
         ? selectionParts(p.selection).flatMap((part) => {
             const selected = corridors.get(part.corridorId);
             return selected
-              ? [
-                  {
-                    ...slice(selected, part.start, part.end),
-                    properties: { tracks: p.previewTracks },
+              ? [{
+                  ...stationAlignedLine(selected, part.start, part.end, displayStations),
+                  properties: {
+                    tracks: p.previewTracks,
+                    electrified: p.previewElectrified,
+                    leg: 0,
                   },
-                ]
+                }]
               : [];
           })
-        : [],
+        : [];
+    set(
+      "selected",
+      selectedFeatures,
     );
     set(
       "stations",
-      p.network.stations
-        .filter(
-          (s) =>
-            s.id === p.station?.id ||
-            stationOnSections(s, p.network.corridors, p.effective) ||
-            (p.constructing &&
-              p.selection &&
-              stationOnSections(
-                s,
-                p.network.corridors,
-                selectionParts(p.selection),
-              )),
-        )
+      displayStations
         .map((s) =>
           feature(
             {
               type: "Point",
-              coordinates: pointAt(corridors.get(s.corridorId)!, s.position),
+              coordinates: stationCenter(corridors.get(s.corridorId)!, s),
             },
             { id: s.id, name: s.name, selected: s.id === p.station?.id },
           ),
         ),
     );
     if (!map.getLayer("row-visible")) {
+      map.addLayer({ id: "population-fill", type: "fill", source: "population", minzoom: 7,
+        paint: { "fill-color": ["interpolate", ["linear"], ["get", "population"], 0, "#fff3d2", 100, "#f4d16b", 1000, "#e3933d", 5000, "#b34631", 15000, "#702434"], "fill-opacity": 0.35 } });
+      map.addLayer({ id: "population-outline", type: "line", source: "population", minzoom: 7,
+        paint: { "line-color": "#997b50", "line-width": 0.6, "line-opacity": 0.5 } });
+      map.addLayer({ id: "coverage-fill", type: "fill", source: "coverage", minzoom: 7,
+        paint: { "fill-color": "#268c75", "fill-opacity": ["+", 0.12, ["*", 0.65, ["get", "share"]]] } });
+      map.addLayer({ id: "coverage-outline", type: "line", source: "coverage", minzoom: 7,
+        paint: { "line-color": "#268c75", "line-width": 0.7, "line-opacity": 0.55 } });
+      map.addLayer({ id: "catchment-fill", type: "fill", source: "catchment", minzoom: 7,
+        paint: { "fill-color": ["match", ["get", "mode"], "walk", "#269874", "cycle", "#268ab7", "transit", "#9257bc", "#d87935"], "fill-opacity": ["*", 0.85, ["get", "share"]] } });
+      map.addLayer({ id: "catchment-outline", type: "line", source: "catchment", minzoom: 7,
+        paint: { "line-color": "#426d73", "line-width": 1, "line-opacity": 0.5 } });
+      map.addLayer({ id: "population-labels", type: "symbol", source: "population", minzoom: 10,
+        layout: { "text-field": ["to-string", ["get", "population"]], "text-font": ["Open Sans Regular"], "text-size": 11 },
+        paint: { "text-color": "#403a32", "text-halo-color": "#fff", "text-halo-width": 1.5 } });
+      map.addLayer({ id: "transit-stop-points", type: "circle", source: "transit-stops", minzoom: 10,
+        paint: { "circle-radius": 3, "circle-color": "#9257bc", "circle-stroke-color": "#fff", "circle-stroke-width": 1 } });
       map.addLayer({
         id: "buildings-fill",
         type: "fill",
@@ -284,6 +364,17 @@ export function MapView(props: Props) {
             ],
           },
         });
+      map.addLayer({
+        id: "built-electrified",
+        type: "line",
+        source: "built",
+        filter: ["==", ["get", "electrified"], true],
+        paint: {
+          "line-color": p.dark ? "#f0c96a" : "#75530d",
+          "line-width": 1.5,
+          "line-dasharray": [1, 3],
+        },
+      });
       // Parallel strokes preserve a legible track count at national zoom levels.
       for (let i = 0; i < 4; i++)
         map.setPaintProperty(`built-${i}`, "line-offset", [
@@ -334,6 +425,23 @@ export function MapView(props: Props) {
             ],
           },
         });
+      map.addLayer({
+        id: "selected-electrified",
+        type: "line",
+        source: "selected",
+        filter: ["==", ["get", "electrified"], true],
+        paint: {
+          "line-color": "#6d4c0b",
+          "line-width": 1.5,
+          "line-dasharray": [1, 3],
+        },
+      });
+      map.addLayer({
+        id: "selected-hit",
+        type: "line",
+        source: "selected",
+        paint: { "line-color": "#000", "line-width": 24, "line-opacity": 0 },
+      });
       map.addLayer({
         id: "affected-fill",
         type: "fill",
@@ -388,7 +496,13 @@ export function MapView(props: Props) {
     staticData.current = {
       network: p.network,
       demolished: p.project.demolished,
+      stationProject: p.project.stations,
+      station: p.station,
     };
+    for (const id of ["population-fill", "population-outline", "population-labels"]) map.setLayoutProperty(id, "visibility", p.layers.population && p.populationMode === "density" ? "visible" : "none");
+    for (const id of ["coverage-fill", "coverage-outline"]) map.setLayoutProperty(id, "visibility", p.layers.population && p.populationMode === "catchment" ? "visible" : "none");
+    for (const id of ["catchment-fill", "catchment-outline"]) map.setLayoutProperty(id, "visibility", p.layers.catchment ? "visible" : "none");
+    map.setLayoutProperty("transit-stop-points", "visibility", p.layers.transit ? "visible" : "none");
     for (const id of ["affected-fill", "affected-outline"])
       map.setFilter(id, ["in", ["get", "id"], ["literal", p.affected]]);
     map.setFilter("blocked-roads", [
@@ -417,6 +531,11 @@ export function MapView(props: Props) {
       "line-color",
       p.dark ? "#748c86" : "#81928b",
     );
+    map.setPaintProperty(
+      "built-electrified",
+      "line-color",
+      p.dark ? "#f0c96a" : "#75530d",
+    );
   };
   useEffect(() => {
     if (!container.current) return;
@@ -441,6 +560,12 @@ export function MapView(props: Props) {
       maxZoom: 19,
     });
     mapRef.current = map;
+    const updatePopulationBounds = () => {
+      if (map.getZoom() < 7) { setPopulationBounds(null); return; }
+      const b = map.getBounds();
+      setPopulationBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+    };
+    map.on("moveend", updatePopulationBounds);
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: false }),
       "bottom-left",
@@ -452,10 +577,57 @@ export function MapView(props: Props) {
     map.on("style.load", () => {
       styleReady.current = true;
       render();
+      updatePopulationBounds();
       latest.current.onReady();
+    });
+    map.on("mousedown", (e) => {
+      const p = latest.current;
+      if (!p.selection || !p.constructing || !map.getLayer("selected-hit")) return;
+      const hit = map.queryRenderedFeatures(e.point, { layers: ["selected-hit"] })[0];
+      if (!hit) return;
+      routeDrag.current = {
+        leg: Number(hit.properties.leg) || 0,
+        x: e.point.x,
+        y: e.point.y,
+      };
+      dragging.current = true;
+      map.dragPan.disable();
+      map.getCanvas().style.cursor = "grabbing";
+    });
+    map.on("mouseup", (e) => {
+      const drag = routeDrag.current;
+      if (!drag) return;
+      routeDrag.current = null;
+      dragging.current = false;
+      map.dragPan.enable();
+      const moved = Math.hypot(e.point.x - drag.x, e.point.y - drag.y) > 4;
+      if (!moved) return;
+      suppressClick.current = true;
+      const hits = map.queryRenderedFeatures(
+        [[e.point.x - 20, e.point.y - 20], [e.point.x + 20, e.point.y + 20]],
+        { layers: ["row-hit"] },
+      );
+      const candidates = [...new Set(hits.map((feature) => feature.properties.id))]
+        .map((id) => {
+          const corridor = latest.current.network.corridors.find((candidate) => candidate.id === id)!;
+          const position = snap(corridor, e.lngLat.toArray());
+          const coordinates = pointAt(corridor, position) as [number, number];
+          return {
+            corridorId: corridor.id,
+            position,
+            distance: map.project(coordinates).dist(e.point),
+          };
+        })
+        .filter((candidate) => candidate.distance <= 30)
+        .sort((a, b) => a.distance - b.distance);
+      if (candidates[0]) latest.current.onWaypoint(drag.leg, candidates[0]);
     });
     map.on("click", (e) => {
       const p = latest.current;
+      if (suppressClick.current) {
+        suppressClick.current = false;
+        return;
+      }
       if (dragging.current) return;
       const hits = map.queryRenderedFeatures(e.point, {
         layers: ["affected-fill", "station-points", "row-hit"].filter(
@@ -498,15 +670,28 @@ export function MapView(props: Props) {
           selectedCorridor.id,
           snap(selectedCorridor, e.lngLat.toArray()),
         );
+        return;
+      }
+      const cell = map.queryRenderedFeatures(e.point, { layers: ["catchment-fill", "coverage-fill", "population-fill"].filter(id => !!map.getLayer(id)) })[0];
+      if (cell) {
+        const el = document.createElement("div");
+        const v = cell.properties;
+        el.className = "building-popup";
+        el.textContent = `SCB 2025 · ${Number(v.population).toLocaleString()} residents${v.share !== undefined ? ` · ${Math.round(v.share * 100)}% ${cell.layer.id === "coverage-fill" ? "combined catchment" : "station share"} (${Math.round(v.residents).toLocaleString()} weighted residents)${v.stationName ? ` · strongest station: ${v.stationName}` : ` · ${v.mode} access`}` : ""}`;
+        new maplibregl.Popup().setLngLat(e.lngLat).setDOMContent(el).addTo(map);
       }
     });
     map.on("mousemove", (e) => {
       const features = map.queryRenderedFeatures(e.point, {
-        layers: ["row-hit", "station-points", "affected-fill"].filter(
+        layers: ["row-hit", "station-points", "affected-fill", "selected-hit"].filter(
           (id) => !!map.getLayer(id),
         ),
       });
-      map.getCanvas().style.cursor = features.length ? "pointer" : "";
+      map.getCanvas().style.cursor = routeDrag.current
+        ? "grabbing"
+        : features.some((feature) => feature.layer.id === "selected-hit")
+          ? "grab"
+          : features.length ? "pointer" : "";
       const candidates = [...new Set(features.filter(f => f.layer.id === "row-hit").map(f => f.properties.id))].map(id => {
         const c = latest.current.network.corridors.find(c => c.id === id)!;
         const coordinates = pointAt(c, snap(c, e.lngLat.toArray())) as [number, number];
@@ -536,17 +721,66 @@ export function MapView(props: Props) {
     props.selection,
     props.effective,
     props.preview,
+    props.previewElectrified,
     props.affected,
     props.blocked,
     props.layers,
     props.station,
     props.constructing,
+    props.catchment,
+    props.coverage,
+    props.populationMode,
+    props.transitStops,
+    population.cells,
   ]);
   useEffect(() => {
     const map = mapRef.current;
     markers.current.forEach(m => m.remove());
     markers.current = [];
-    if (!map || props.station) return;
+    if (!map) return;
+    if (props.station) {
+      if (!props.stationEditable) return;
+      const station = props.station;
+      const corridor = props.network.corridors.find(candidate => candidate.id === station.corridorId);
+      if (!corridor) return;
+      const centerElement = document.createElement("button");
+      centerElement.className = "station-move-handle";
+      centerElement.textContent = "✥";
+      centerElement.title = "Move station";
+      centerElement.setAttribute("aria-label", "Drag to move station along or away from the railway");
+      const centerMarker = new maplibregl.Marker({ element: centerElement, draggable: true })
+        .setLngLat(stationCenter(corridor, station) as [number, number])
+        .addTo(map);
+      centerMarker.on("dragstart", () => { dragging.current = true; });
+      centerMarker.on("dragend", () => {
+        dragging.current = false;
+        suppressClick.current = true;
+        latest.current.onStationMove(centerMarker.getLngLat().toArray());
+      });
+      markers.current.push(centerMarker);
+
+      stationEnds(corridor, station, station.lengthMeters).forEach((coordinates, index) => {
+        const end = index === 0 ? "start" : "end";
+        const element = document.createElement("button");
+        element.className = "station-end-handle";
+        element.textContent = index === 0 ? "A" : "B";
+        element.title = `Resize platform end ${index === 0 ? "A" : "B"}`;
+        element.setAttribute("aria-label", `Drag platform end ${index === 0 ? "A" : "B"}`);
+        const marker = new maplibregl.Marker({ element, draggable: true })
+          .setLngLat(coordinates as [number, number])
+          .addTo(map);
+        marker.on("dragstart", () => { dragging.current = true; });
+        marker.on("dragend", () => {
+          dragging.current = false;
+          suppressClick.current = true;
+          const position = snap(corridor, marker.getLngLat().toArray());
+          marker.setLngLat(coordinates as [number, number]);
+          latest.current.onStationResize(end, position);
+        });
+        markers.current.push(marker);
+      });
+      return;
+    }
     const endpoints = props.selection ? selectionEndpoints(props.selection) : props.anchor ? [props.anchor] : [];
     endpoints.forEach((endpoint, i) => {
       const end = i === 0 ? "start" : "end";
@@ -577,12 +811,40 @@ export function MapView(props: Props) {
       });
       markers.current.push(marker);
     });
-  }, [props.selection, props.anchor, props.station?.id, props.network]);
+    (props.selection?.waypoints || []).forEach((waypoint, index) => {
+      const corridor = props.network.corridors.find((candidate) => candidate.id === waypoint.corridorId);
+      if (!corridor) return;
+      const element = document.createElement("button");
+      element.className = "waypoint-handle";
+      element.textContent = `W${index + 1}`;
+      element.title = "Remove waypoint";
+      element.setAttribute("aria-label", `Remove waypoint ${index + 1}`);
+      element.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        latest.current.onWaypoint(index, null);
+      });
+      const marker = new maplibregl.Marker({ element })
+        .setLngLat(pointAt(corridor, waypoint.position) as [number, number])
+        .addTo(map);
+      markers.current.push(marker);
+    });
+  }, [
+    props.selection,
+    props.anchor,
+    props.station?.id,
+    props.station?.position,
+    props.station?.lateralOffsetMeters,
+    props.station?.lengthMeters,
+    props.stationEditable,
+    props.network,
+  ]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !props.focus) return;
     map.setPadding({ left: 0, right: 0, top: 0, bottom: 0 });
-    const s = props.network.stations.find((s) => s.id === props.focus!.id);
+    const s = props.project.stations[props.focus.id] ||
+      (props.station?.id === props.focus.id ? props.station : undefined);
     if (s) {
       const c = props.network.corridors.find((c) => c.id === s.corridorId)!;
       const shape =
@@ -605,6 +867,19 @@ export function MapView(props: Props) {
         },
       );
     } else {
+      const building = props.network.buildings.find((candidate) => candidate.id === props.focus!.id);
+      if (building) {
+        const bounds = bbox(building.geometry);
+        map.fitBounds(
+          [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+          {
+            padding: { left: 80, right: map.getContainer().clientWidth < 760 ? 25 : 400, top: 150, bottom: 140 },
+            maxZoom: 18,
+            duration: 650,
+          },
+        );
+        return;
+      }
       const c = props.network.corridors.find((c) => c.id === props.focus!.id);
       if (c) {
         const coords = props.selection
@@ -633,10 +908,20 @@ export function MapView(props: Props) {
     }
   }, [props.focus]);
   return (
+    <>
     <div
       className="map"
       ref={container}
       aria-label="Interactive railway construction map"
     />
+    {(props.layers.population || props.layers.catchment) && <div className="population-legend" role="status">
+      <strong>{props.layers.population ? props.populationMode === "density" ? "Population density · SCB 2025" : "All station catchments" : "Selected station catchment"}</strong>
+      {props.layers.population && props.populationMode === "density" && <><div className="population-ramp" /><span>0 · 100 · 1,000 · 5,000 · 15,000+ / km²</span></>}
+      {props.layers.population && props.populationMode === "catchment" && <><div className="coverage-ramp" /><span>Lower → higher combined share</span></>}
+      <span>{props.populationMode === "catchment" ? props.coverageStatus || (!populationBounds ? "Zoom in to see catchments" : "") : population.error || (population.loading ? "Loading population…" : !populationBounds ? "Zoom in to see population" : "")}</span>
+      {props.layers.catchment && props.catchment && <span>Catchment: green walk · blue cycle · purple feeder · orange car</span>}
+      {props.layers.catchment && !props.station && <span>Select or place a station to see its catchment.</span>}
+    </div>}
+    </>
   );
 }

@@ -16,6 +16,7 @@ export interface Section {
   end: number;
   tracks: TrackCount;
   maxSpeedKph: number;
+  electrified: boolean;
 }
 export interface Expansion {
   id: string;
@@ -31,6 +32,8 @@ export interface Station {
   coordinates: Position;
   corridorId: string;
   position: number;
+  /** Signed perpendicular distance from the mapped ROW centreline. */
+  lateralOffsetMeters?: number;
   lengthMeters: number;
   platforms: number;
 }
@@ -50,6 +53,7 @@ export interface Road {
   geometry: LineString;
 }
 export interface Network {
+  places?: { id: string; name: string; coordinates: Position; geometry?: Polygon | MultiPolygon; bounds?: number[] }[];
   corridors: Corridor[];
   stations: Station[];
   buildings: Building[];
@@ -61,7 +65,7 @@ export interface Project {
   networkKey: string;
   sections: Section[];
   expansions: Expansion[];
-  stations: Record<string, { lengthMeters: number; platforms: number }>;
+  stations: Record<string, Station>;
   demolished: string[];
   spent: number;
 }
@@ -77,4 +81,5 @@ export interface RouteEndpoint {
 export interface Selection extends SelectionPart {
   parts?: SelectionPart[];
   endpoints?: [RouteEndpoint, RouteEndpoint];
+  waypoints?: RouteEndpoint[];
 }

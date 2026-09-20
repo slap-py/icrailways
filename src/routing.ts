@@ -231,6 +231,42 @@ export function routeSelection(
   return { ...parts[0], parts, endpoints: [a, b] };
 }
 
+export function routeSelectionVia(
+  corridors: Corridor[],
+  points: RouteEndpoint[],
+  stations: Station[] = NO_STATIONS,
+): Selection | undefined {
+  if (points.length < 2) return;
+  const parts: SelectionPart[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const leg = routeSelection(corridors, points[i - 1], points[i], stations);
+    if (!leg) return;
+    for (const part of selectionPartsForRoute(leg)) {
+      const previous = parts.at(-1);
+      if (
+        previous?.corridorId === part.corridorId &&
+        (Math.abs(previous.end - part.start) < 1 ||
+          Math.abs(previous.start - part.end) < 1)
+      ) {
+        previous.start = Math.min(previous.start, part.start);
+        previous.end = Math.max(previous.end, part.end);
+      } else parts.push({ ...part });
+    }
+  }
+  if (!parts.length) return;
+  return {
+    ...parts[0],
+    parts,
+    endpoints: [points[0], points.at(-1)!],
+    waypoints: points.slice(1, -1),
+  };
+}
+
+const selectionPartsForRoute = (selection: Selection) =>
+  selection.parts?.length
+    ? selection.parts
+    : [{ corridorId: selection.corridorId, start: selection.start, end: selection.end }];
+
 export function selectionEndpoints(selection: Selection): [RouteEndpoint, RouteEndpoint] {
   return (
     selection.endpoints || [

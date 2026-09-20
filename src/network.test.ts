@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { length, lineString } from "@turf/turf";
-import { simplifyNetwork } from "./network";
+import { simplifyNetwork, removeDepotTails } from "./network";
 import type { Corridor, Network } from "./types";
 
 function corridor(id: string, coordinates: number[][], name = "Main line") {
@@ -21,6 +21,16 @@ const baseNetwork = (corridors: Corridor[]): Network => ({
   buildings: [],
   roads: [],
   meta: { fetchedAt: "test", bbox: [14, 58, 16, 60], attribution: "test" },
+});
+
+test("cleanup removes short depot tails but retains connecting links and station approaches", () => {
+  const main = corridor("main", [[15, 59], [15.04, 59]]);
+  const depot = corridor("depot", [[15.01, 59], [15.01, 59.015]], "Connecting railway");
+  const link = corridor("link", [[15.015, 59], [15.02, 59.001], [15.025, 59]], "Connecting railway");
+  const network = baseNetwork([main, depot, link]);
+  assert.deepEqual(removeDepotTails(network).map(c => c.id), ["main", "link"]);
+  network.stations.push({ id: "s", name: "Town", coordinates: [15.01, 59.015], corridorId: "depot", position: depot.length, lengthMeters: 100, platforms: 2 });
+  assert.equal(removeDepotTails(network).length, 3);
 });
 
 test("network cleanup removes parallel artifacts and joins continuous segments", () => {

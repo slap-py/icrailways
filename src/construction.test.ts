@@ -217,6 +217,14 @@ test("identical settings cannot charge for duplicate work, but gaps and speed ch
   );
 });
 
+test("electrification is stored and treated as a section setting", () => {
+  const p = replaceSection(emptyProject("n"), selected, 2, 160, true);
+  const sections = effectiveSections(p);
+  assert.equal(sections[0].electrified, true);
+  assert.equal(sectionMatches(sections, selected, 2, 160, true), true);
+  assert.equal(sectionMatches(sections, selected, 2, 160, false), false);
+});
+
 test("construction applies every part of a routed selection", () => {
   const route: import("./types").Selection = {
     corridorId: "a",

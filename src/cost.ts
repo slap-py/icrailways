@@ -17,12 +17,17 @@ export function speedMultiplier(speed: number) {
   }
   return 2.6;
 }
-export function trackCost(meters: number, tracks: number, speed: number) {
+// Prototype allowance per track-km, including overhead equipment and power supply.
+export const ELECTRIFICATION_PER_TRACK_KM = 250_000;
+export function electrificationCost(meters: number, tracks: number) {
+  return meters / 1000 * tracks * ELECTRIFICATION_PER_TRACK_KM;
+}
+export function trackCost(meters: number, tracks: number, speed: number, electrified = false) {
   return (
     (meters / 1000) *
     1_000_000 *
     [0, 1, 1.8, 2.5, 3.1][tracks] *
-    speedMultiplier(speed)
+    speedMultiplier(speed) + (electrified ? electrificationCost(meters, tracks) : 0)
   );
 }
 export function buildingEstimate(tags: Record<string, string>, area: number) {

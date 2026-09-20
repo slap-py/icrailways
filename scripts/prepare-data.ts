@@ -3,7 +3,6 @@ import path from "node:path";
 import {
   area,
   bearing,
-  distance,
   length,
   lineString,
   nearestPointOnLine,
@@ -11,9 +10,29 @@ import {
   centerOfMass,
 } from "@turf/turf";
 import osmtogeojson from "osmtogeojson";
+import RBush from "rbush";
 import { buildingEstimate } from "../src/cost";
-import { simplifyNetwork } from "../src/network";
-import type { Corridor, Station } from "../src/types";
+import { simplifyNetwork, removeDepotTails } from "../src/network";
+import type { Corridor, Network, Station } from "../src/types";
+// Rebuild existing coverage from raw tracks without replacing its property layers.
+const previous: Network | undefined = process.env.ROW_SOURCE_NETWORK
+  ? JSON.parse(fs.readFileSync(process.env.ROW_SOURCE_NETWORK, "utf8")) : undefined;
+const sourceIds = new Set(previous?.corridors.flatMap(c => c.osmWayIds));
+const coverage = new RBush<{ minX: number; minY: number; maxX: number; maxY: number; coordinates: number[][] }>();
+if (previous) coverage.load(previous.corridors.flatMap(c => c.geometry.coordinates.slice(1).map((b, i) => {
+  const a = c.geometry.coordinates[i];
+  return { minX: Math.min(a[0], b[0]), minY: Math.min(a[1], b[1]),
+    maxX: Math.max(a[0], b[0]), maxY: Math.max(a[1], b[1]), coordinates: [a, b] };
+})));
+function inCoverage(w: any) {
+  if (!previous || sourceIds.has(w.id)) return true;
+  const coords = w.geometry;
+  return [coords[0], coords[Math.floor(coords.length / 2)], coords.at(-1)].every(p => {
+    const dy = 45 / 111195, dx = dy / Math.cos(p.lat * Math.PI / 180);
+    return coverage.search({ minX: p.lon - dx, minY: p.lat - dy, maxX: p.lon + dx, maxY: p.lat + dy })
+      .some(s => nearestPointOnLine(lineString(s.coordinates), [p.lon, p.lat], { units: "meters" }).properties.dist < 45);
+  });
+}
 const raw = JSON.parse(
   fs.readFileSync(process.env.ROW_RAIL_FILE || "/tmp/rail-osm.json", "utf8"),
 );
@@ -23,40 +42,30 @@ const ways = raw.elements.filter(
     e.tags?.railway === "rail" &&
     e.geometry?.length > 1 &&
     !/siding|spur|yard/.test(e.tags.service || "") &&
-    !/industrial|military|test/.test(e.tags.usage || ""),
+    !/depot|depå|verkstad/i.test(e.tags.name || "") &&
+    !/industrial|military|test/.test(e.tags.usage || "") && inCoverage(e),
 );
+// Keep surveyed track geometry until centerline construction. Snapping to the
+// first nearby track here biased the ROW and could chain across parallel tracks.
 const nodes: number[][] = [];
-const buckets = new Map<string, number[]>();
+const nodeIds = new Map<string, number>();
 function endpoint(p: number[]) {
-  const x = Math.round(p[0] * 3000),
-    y = Math.round(p[1] * 6000);
-  for (let dx = -2; dx <= 2; dx++)
-    for (let dy = -2; dy <= 2; dy++)
-      for (const i of buckets.get(`${x + dx},${y + dy}`) || [])
-        if (distance(p, nodes[i], { units: "meters" }) < 32) return i;
+  const key = p.join(',');
+  const existing = nodeIds.get(key);
+  if (existing !== undefined) return existing;
   const id = nodes.length;
   nodes.push(p);
-  const key = `${x},${y}`;
-  buckets.set(key, [...(buckets.get(key) || []), id]);
+  nodeIds.set(key, id);
   return id;
 }
 const edges: any[] = [];
-const pairs = new Map<string, any[]>();
+
 for (const w of ways) {
   const coords = w.geometry.map((p: any) => [p.lon, p.lat]);
   const a = endpoint(coords[0]),
     b = endpoint(coords.at(-1));
   if (a === b) continue;
   const len = length(lineString(coords), { units: "meters" });
-  const key = [a, b].sort((x, y) => x - y).join("-");
-  const same = pairs.get(key) || [];
-  const old = same.find(
-    (e) => Math.abs(e.len - len) < Math.max(60, len * 0.15),
-  );
-  if (old) {
-    old.ids.push(w.id);
-    continue;
-  }
   const e = {
     a,
     b,
@@ -67,7 +76,7 @@ for (const w of ways) {
     used: false,
   };
   edges.push(e);
-  pairs.set(key, [...same, e]);
+
 }
 const adjacent = new Map<number, any[]>();
 for (const e of edges)
@@ -116,7 +125,7 @@ for (const first of [...edges].sort((a, b) => b.len - a.len)) {
   }
   extend(false);
   extend(true);
-  if (total < 200) continue;
+
   const geometry = lineString(coords).geometry;
   corridors.push({
     id: `row-${Math.min(...ids)}`,
@@ -136,7 +145,7 @@ for (const first of [...edges].sort((a, b) => b.len - a.len)) {
 const stations: Station[] = [];
 for (const n of raw.elements.filter(
   (e: any) =>
-    e.tags?.railway === "station" &&
+    !previous && e.tags?.railway === "station" &&
     e.lat &&
     e.tags?.station !== "subway" &&
     e.tags?.station !== "light_rail",
@@ -222,15 +231,21 @@ const network = {
       "Buildings within 45 m of active railway; station buildings and roads within 500 m of railway stations.",
   },
 };
-const cleaned = simplifyNetwork(network);
+const cleaned = simplifyNetwork(previous ? {
+  ...previous, corridors, meta: { ...previous.meta, fetchedAt: network.meta.fetchedAt },
+} : network);
+cleaned.corridors = removeDepotTails(cleaned);
+cleaned.stations = cleaned.stations.filter(s => cleaned.corridors.some(c => c.id === s.corridorId));
+const placesFile = "public/data/places.json";
+if (fs.existsSync(placesFile)) cleaned.places = JSON.parse(fs.readFileSync(placesFile, "utf8")).places;
 const output = process.env.ROW_OUTPUT_FILE || "public/data/sweden.json";
 fs.mkdirSync(path.dirname(output), { recursive: true });
 fs.writeFileSync(output, JSON.stringify(cleaned));
 console.log({
   corridors: cleaned.corridors.length,
   stations: cleaned.stations.length,
-  buildings: buildings.length,
-  roads: roads.length,
+  buildings: cleaned.buildings.length,
+  roads: cleaned.roads.length,
   km: Math.round(
     cleaned.corridors.reduce((n, c) => n + c.length, 0) / 1000,
   ),

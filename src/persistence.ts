@@ -20,8 +20,12 @@ export function loadProject(networkKey: string): Project {
     throw new Error(
       "This save does not match the current region or prototype version.",
     );
+  const sections = p.sections.map((section) => ({
+    ...section,
+    electrified: section.electrified === true,
+  }));
   if (
-    p.sections.some(
+    sections.some(
       (s) =>
         !s.corridorId ||
         !Number.isFinite(s.start) ||
@@ -29,10 +33,15 @@ export function loadProject(networkKey: string): Project {
         s.start >= s.end ||
         ![1, 2, 3, 4].includes(s.tracks) ||
         s.maxSpeedKph < 80 ||
-        s.maxSpeedKph > 320,
+        s.maxSpeedKph > 320 ||
+        typeof s.electrified !== "boolean",
     )
   )
     throw new Error("Saved construction data is invalid.");
+  const stationValues = Object.values(p.stations);
+  const legacyStations = stationValues.some(
+    (station) => !station || !("corridorId" in station),
+  );
   if (
     p.expansions.some(
       (e) =>
@@ -43,16 +52,33 @@ export function loadProject(networkKey: string): Project {
         !["passing", "overtaking"].includes(e.type) ||
         e.addedTracks !== (e.type === "passing" ? 1 : 2),
     ) ||
-    Object.values(p.stations).some(
+    (!legacyStations && stationValues.some(
       (s) =>
         !s ||
-        ![100, 150, 200, 250, 300, 400].includes(s.lengthMeters) ||
+        typeof s.id !== "string" ||
+        typeof s.name !== "string" ||
+        typeof s.corridorId !== "string" ||
+        !Number.isFinite(s.position) ||
+        !Array.isArray(s.coordinates) ||
+        !Number.isInteger(s.lengthMeters) ||
+        s.lengthMeters < 50 ||
+        s.lengthMeters > 800 ||
+        s.lengthMeters % 10 !== 0 ||
+        (s.lateralOffsetMeters !== undefined &&
+          (!Number.isFinite(s.lateralOffsetMeters) ||
+            Math.abs(s.lateralOffsetMeters) > 250)) ||
         !Number.isInteger(s.platforms) ||
         s.platforms < 1 ||
         s.platforms > 12,
-    ) ||
+    )) ||
     p.demolished.some((id) => typeof id !== "string")
   )
     throw new Error("Saved station or expansion data is invalid.");
-  return p;
+  const stations = legacyStations
+    ? {}
+    : Object.fromEntries(stationValues.map((station) => [station.id, {
+        ...station,
+        lateralOffsetMeters: station.lateralOffsetMeters || 0,
+      }]));
+  return { ...p, sections, stations };
 }
