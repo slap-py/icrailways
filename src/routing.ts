@@ -22,79 +22,64 @@ const graphCache = new WeakMap<Corridor[], { stations: Station[]; links: Transfe
 function transfers(corridors: Corridor[], stations: Station[]) {
   const cached = graphCache.get(corridors);
   if (cached?.stations === stations) return cached.links;
-  const corridorById = new Map(corridors.map((c) => [c.id, c]));
-  const segmentIndex = new RBush<{
-    minX: number;
-    minY: number;
-    maxX: number;
-    maxY: number;
-    corridorId: string;
-  }>();
-  segmentIndex.load(
-    corridors.flatMap((corridor) =>
-      corridor.geometry.coordinates.slice(1).map((b, i) => {
-        const a = corridor.geometry.coordinates[i];
-        return {
-          minX: Math.min(a[0], b[0]),
-          minY: Math.min(a[1], b[1]),
-          maxX: Math.max(a[0], b[0]),
-          maxY: Math.max(a[1], b[1]),
-          corridorId: corridor.id,
-        };
-      }),
-    ),
-  );
-  const result: Transfer[] = [];
-  for (const corridor of corridors)
-    for (const position of [0, corridor.length]) {
-      const coordinates =
-        position === 0
-          ? corridor.geometry.coordinates[0]
-          : corridor.geometry.coordinates.at(-1)!;
-      const dy = CONNECTION_DISTANCE_METERS / 111195,
-        dx = dy / Math.cos((coordinates[1] * Math.PI) / 180),
-        candidates = new Set(
-          segmentIndex
-            .search({
-              minX: coordinates[0] - dx,
-              minY: coordinates[1] - dy,
-              maxX: coordinates[0] + dx,
-              maxY: coordinates[1] + dy,
-            })
-            .map((item) => item.corridorId),
-        );
-      for (const otherId of candidates) {
-        const other = corridorById.get(otherId)!;
-        if (other.id === corridor.id) continue;
-        const nearest = nearestPointOnLine(other.geometry, coordinates, {
-          units: "meters",
-        });
-        if (nearest.properties.dist > CONNECTION_DISTANCE_METERS) continue;
-        const duplicate = result.some(
-          (link) =>
-            link.a.corridorId === other.id &&
-            link.b.corridorId === corridor.id &&
-            Math.abs(link.a.position - nearest.properties.location) < 1 &&
-            Math.abs(link.b.position - position) < 1,
-        );
-        if (!duplicate)
-          result.push({
-            a: { corridorId: corridor.id, position },
-            b: {
-              corridorId: other.id,
-              position: nearest.properties.location,
-            },
-            distance: nearest.properties.dist,
-          });
-      }
+  // Keep the along-corridor position on each indexed segment. Projecting onto
+  // a nearby segment avoids rescanning a national corridor for every junction.
+  type Segment = { minX: number; minY: number; maxX: number; maxY: number;
+    corridorId: string; start: number; a: number[]; b: number[] };
+  const segmentIndex = new RBush<Segment>();
+  const segments: Segment[] = [];
+  const positionsByCorridor = new Map<string, number[]>();
+  for (const corridor of corridors) {
+    const positions = [0];
+    const points = corridor.geometry.coordinates;
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1], b = points[i];
+      segments.push({ minX: Math.min(a[0], b[0]), minY: Math.min(a[1], b[1]),
+        maxX: Math.max(a[0], b[0]), maxY: Math.max(a[1], b[1]),
+        corridorId: corridor.id, start: positions[i - 1], a, b });
+      positions.push(positions[i - 1] + distance(a, b, { units: "meters" }));
     }
+    positionsByCorridor.set(corridor.id, positions);
+  }
+  segmentIndex.load(segments);
+  const nearby = (coordinates: number[], exclude?: string) => {
+    const dy = CONNECTION_DISTANCE_METERS / 111195;
+    const dx = dy / Math.cos(coordinates[1] * Math.PI / 180);
+    const nearestByCorridor = new Map<string, { endpoint: RouteEndpoint; coordinates: number[]; distance: number }>();
+    for (const segment of segmentIndex.search({ minX: coordinates[0] - dx, minY: coordinates[1] - dy,
+      maxX: coordinates[0] + dx, maxY: coordinates[1] + dy })) {
+      if (segment.corridorId === exclude) continue;
+      const nearest = nearestPointOnLine({ type: "LineString", coordinates: [segment.a, segment.b] }, coordinates, { units: "meters" });
+      const previous = nearestByCorridor.get(segment.corridorId);
+      if (nearest.properties.dist > CONNECTION_DISTANCE_METERS || (previous && previous.distance <= nearest.properties.dist)) continue;
+      nearestByCorridor.set(segment.corridorId, {
+        endpoint: { corridorId: segment.corridorId, position: segment.start + nearest.properties.location },
+        coordinates: nearest.geometry.coordinates, distance: nearest.properties.dist,
+      });
+    }
+    return [...nearestByCorridor.values()];
+  };
+  const result: Transfer[] = [];
+  const pairs = new Map<string, Transfer[]>();
+  for (const corridor of corridors) for (const position of [0, corridor.length]) {
+    const coordinates = position === 0 ? corridor.geometry.coordinates[0] : corridor.geometry.coordinates.at(-1)!;
+    for (const other of nearby(coordinates, corridor.id)) {
+      const key = [corridor.id, other.endpoint.corridorId].sort().join("|");
+      const existing = pairs.get(key) || [];
+      if (existing.some(link => link.a.corridorId === other.endpoint.corridorId &&
+        Math.abs(link.a.position - other.endpoint.position) < 1 && Math.abs(link.b.position - position) < 1)) continue;
+      const link = { a: { corridorId: corridor.id, position }, b: other.endpoint, distance: other.distance };
+      result.push(link);
+      existing.push(link);
+      pairs.set(key, existing);
+    }
+  }
   // A merged data line can run through a junction without ending there.
   // Shared vertices and station approaches retain those interior connections.
   const vertices = new Map<string, RouteEndpoint>();
   for (const corridor of corridors) {
-    let position = 0;
-    corridor.geometry.coordinates.forEach((coordinates, i, points) => {
-      if (i) position += distance(points[i - 1], coordinates, { units: "meters" });
+    corridor.geometry.coordinates.forEach((coordinates, i) => {
+      const position = positionsByCorridor.get(corridor.id)![i];
       const key = coordinates.join(",");
       const other = vertices.get(key);
       const here = { corridorId: corridor.id, position };
@@ -104,19 +89,7 @@ function transfers(corridors: Corridor[], stations: Station[]) {
     });
   }
   for (const station of stations) {
-    const coordinates = station.coordinates;
-    const dy = CONNECTION_DISTANCE_METERS / 111195;
-    const dx = dy / Math.cos(coordinates[1] * Math.PI / 180);
-    const ids = new Set(segmentIndex.search({
-      minX: coordinates[0] - dx, minY: coordinates[1] - dy,
-      maxX: coordinates[0] + dx, maxY: coordinates[1] + dy,
-    }).map(item => item.corridorId));
-    const approaches = [...ids].flatMap(id => {
-      const nearest = nearestPointOnLine(corridorById.get(id)!.geometry, coordinates, { units: "meters" });
-      return nearest.properties.dist <= CONNECTION_DISTANCE_METERS
-        ? [{ endpoint: { corridorId: id, position: nearest.properties.location }, coordinates: nearest.geometry.coordinates }]
-        : [];
-    });
+    const approaches = nearby(station.coordinates);
     for (let i = 0; i < approaches.length; i++)
       for (let j = i + 1; j < approaches.length; j++) {
         const a = approaches[i], b = approaches[j];
@@ -127,6 +100,11 @@ function transfers(corridors: Corridor[], stations: Station[]) {
   }
   graphCache.set(corridors, { stations, links: result });
   return result;
+}
+
+/** Prepare the reusable junction index while the network loading screen is up. */
+export function prepareRouting(corridors: Corridor[], stations: Station[] = NO_STATIONS) {
+  transfers(corridors, stations);
 }
 
 const nodeId = (point: RouteEndpoint) =>

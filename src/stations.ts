@@ -1,6 +1,6 @@
 import { booleanPointInPolygon, distance } from "@turf/turf";
 import type { Position } from "geojson";
-import type { Network, Station } from "./types";
+import type { Depot, Network, Station } from "./types";
 
 export const MIN_STATION_LENGTH = 50;
 export const MAX_STATION_LENGTH = 800;
@@ -30,7 +30,7 @@ export function resizeStationSpan(
   return { position: fixedStart + nextLength / 2, lengthMeters: nextLength };
 }
 
-export function suggestStationName(coordinates: Position, places: Network["places"], stations: Record<string, Station>) {
+function nearestPlaceName(coordinates: Position, places: Network["places"]) {
   let nearest: { name: string; meters: number } | undefined;
   for (const place of places || []) {
     const b = place.bounds;
@@ -41,11 +41,23 @@ export function suggestStationName(coordinates: Position, places: Network["place
     const meters = distance(coordinates, place.coordinates, { units: "meters" });
     if (meters <= 15000 && (!nearest || meters < nearest.meters)) nearest = { name: place.name, meters };
   }
-  const base = nearest ? nearest.name : "New station";
-  const names = new Set(Object.values(stations).map(s => s.name.toLocaleLowerCase()));
+  return nearest?.name;
+}
+
+function uniqueName(base: string, existing: string[]) {
+  const names = new Set(existing.map(name => name.toLocaleLowerCase()));
   let name = base;
   for (let suffix = 2; names.has(name.toLocaleLowerCase()); suffix++) name = `${base} ${suffix}`;
   return name;
+}
+
+export function suggestStationName(coordinates: Position, places: Network["places"], stations: Record<string, Station>) {
+  return uniqueName(nearestPlaceName(coordinates, places) || "New station", Object.values(stations).map(s => s.name));
+}
+
+export function suggestDepotName(coordinates: Position, places: Network["places"], depots: Record<string, Depot>) {
+  const place = nearestPlaceName(coordinates, places);
+  return uniqueName(place ? `${place} yard` : "New rail yard", Object.values(depots).map(depot => depot.name));
 }
 
 export function stationPreviews(stations: Record<string, Station>, preview?: Station) {

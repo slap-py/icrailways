@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --import tsx --test src/*.test.ts",
+    "test:e2e": "node scripts/run-e2e.mjs",
     "data:fetch": "node scripts/fetch-osm.mjs",
     "data:import-pbf": "node scripts/import-osm-pbf.mjs",
     "data:download": "node scripts/download-manager.mjs start",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@mapbox/vector-tile": "^3.0.0",
+    "@playwright/test": "^1.63.0",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^22.15.0",
     "@types/rbush": "^4.0.0",

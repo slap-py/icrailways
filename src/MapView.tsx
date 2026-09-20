@@ -16,7 +16,8 @@ import {
   stationEnds,
   stationEnvelope,
 } from "./geometry";
-import type { Network, Project, Selection, Section, Station, RouteEndpoint, TrackCount } from "./types";
+import type { Depot, Network, Project, Selection, Section, Station, RouteEndpoint, TrackCount } from "./types";
+import { depotFrame, depotGeometry, depotOutline } from "./depots";
 import { compactMoney } from "./cost";
 import { stationPreviews } from "./stations";
 import type { Catchment, TransitStop, PopulationCell, CoverageCell } from "./catchment";
@@ -41,10 +42,18 @@ interface Props {
   catchment: Catchment | null;
   coverage: CoverageCell[] | null;
   populationMode: "density" | "catchment";
+  populationOpacity: number;
+  invalidPreview: boolean;
+  panelSize: { width: number; height: number } | null;
   coverageStatus: string;
   transitStops: TransitStop[];
   station: Station | undefined;
   stationEditable: boolean;
+  depot: Depot | null;
+  depotEditable: boolean;
+  onDepotVertex: (index: number, coordinates: [number, number] | null, insert?: boolean) => void;
+  onDepot: (id: string) => void;
+  onDepotSnapMiss: () => void;
   constructing: boolean;
   focus: { id: string; nonce: number } | null;
   onCorridor: (id: string, position: number) => void;
@@ -53,6 +62,7 @@ interface Props {
   onWaypoint: (index: number, target: RouteEndpoint | null) => void;
   onStationMove: (coordinates: number[]) => void;
   onStationResize: (end: "start" | "end", position: number) => void;
+  onBasemapError: (message: string) => void;
   onReady: () => void;
 }
 export function MapView(props: Props) {
@@ -70,6 +80,7 @@ export function MapView(props: Props) {
     selectedKey?: string;
     stationBuilt?: Project["stations"];
     stationMarkerKey?: string;
+    depotKey?: string;
   }>({});
   populationRef.current = population;
   const container = useRef<HTMLDivElement>(null),
@@ -79,9 +90,16 @@ export function MapView(props: Props) {
     dragging = useRef(false),
     routeDrag = useRef<{ leg: number; x: number; y: number } | null>(null),
     suppressClick = useRef(false),
+    fallbackStyle = useRef(false),
     styleReady = useRef(false),
     staticData = useRef<{ network?: Network; demolished?: string[]; stationGeometryKey?: string }>({});
   latest.current = props;
+  const cameraPadding = (map: GLMap, top = 150, bottom = 140, left = 80) => {
+    const size = latest.current.panelSize;
+    const narrow = map.getContainer().clientWidth < 760;
+    return { left, right: narrow ? 25 : size?.width ? size.width + 50 : 30, top,
+      bottom: narrow && size?.height ? size.height + 30 : bottom };
+  };
   const render = () => {
     const map = mapRef.current;
     if (!map || !styleReady.current) return;
@@ -273,6 +291,22 @@ export function MapView(props: Props) {
       );
       sourceData.current.stationMarkerKey = stationMarkerKey;
     }
+    const depots = [...Object.values(p.project.depots || {}).filter(d => d.id !== p.depot?.id), ...(p.depot ? [p.depot] : [])];
+    const depotKey = "layout-v3:" + JSON.stringify(depots) + stationGeometryKey;
+    if (!map.getSource("depots") || sourceData.current.depotKey !== depotKey) {
+      const yards = depots.flatMap(d => {
+        const c = corridors.get(d.corridorId);
+        return c ? [{ yard: depotGeometry(c, d, displayStations, p.network.corridors), depot: d }] : [];
+      });
+      set("depots", yards.map(({ yard, depot }) => ({ ...yard.area, properties: { ...yard.area.properties,
+        selected: depot.id === p.depot?.id, draft: p.depotEditable && depot.id === p.depot?.id,
+        invalid: p.depotEditable && depot.id === p.depot?.id && !!yard.layoutError } })));
+      set("depot-rails", yards.flatMap(({ yard, depot }) => [...yard.connections, ...yard.sidings, ...yard.buffers].map(line => ({ ...line,
+        properties: { ...line.properties, draft: p.depotEditable && depot.id === p.depot?.id,
+          invalid: p.depotEditable && depot.id === p.depot?.id && !!yard.layoutError } }))));
+      set("depot-labels", yards.map(({ yard }) => yard.label));
+      sourceData.current.depotKey = depotKey;
+    }
     if (!map.getLayer("row-visible")) {
       map.addLayer({ id: "population-fill", type: "fill", source: "population", minzoom: 7,
         paint: { "fill-color": ["interpolate", ["linear"], ["get", "population"], 0, "#fff3d2", 100, "#f4d16b", 1000, "#e3933d", 5000, "#b34631", 15000, "#702434"], "fill-opacity": 0.35 } });
@@ -427,13 +461,13 @@ export function MapView(props: Props) {
         id: "preview-fill",
         type: "fill",
         source: "preview",
-        paint: { "fill-color": "#e9ad4b", "fill-opacity": 0.35 },
+        paint: { "fill-color": p.invalidPreview ? "#d95745" : "#e9ad4b", "fill-opacity": 0.35 },
       });
       map.addLayer({
         id: "preview-outline",
         type: "line",
         source: "preview",
-        paint: { "line-color": "#bf8835", "line-width": 1.5 },
+        paint: { "line-color": p.invalidPreview ? "#b53b2f" : "#bf8835", "line-width": p.invalidPreview ? 2.5 : 1.5 },
       });
       map.addLayer({
         id: "selected-links-visible", type: "line", source: "selected-links",
@@ -512,13 +546,9 @@ export function MapView(props: Props) {
           "circle-sort-key": ["get", "platforms"],
         },
         paint: {
-          "circle-radius": [
-            "+",
-            ["interpolate", ["linear"], ["zoom"],
-              3, ["interpolate", ["linear"], ["get", "platforms"], 1, 3, 2, 3.5, 4, 5, 8, 7.5, 12, 10],
-              8, ["interpolate", ["linear"], ["get", "platforms"], 1, 4.5, 2, 5, 4, 7, 8, 10, 12, 13],
-            ],
-            ["case", ["get", "selected"], 2, 0],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"],
+            3, ["+", ["interpolate", ["linear"], ["get", "platforms"], 1, 3, 2, 3.5, 4, 5, 8, 7.5, 12, 10], ["case", ["get", "selected"], 2, 0]],
+            8, ["+", ["interpolate", ["linear"], ["get", "platforms"], 1, 4.5, 2, 5, 4, 7, 8, 10, 12, 13], ["case", ["get", "selected"], 2, 0]],
           ],
           "circle-color": "#fff",
           "circle-stroke-color": "#235e50",
@@ -565,6 +595,24 @@ export function MapView(props: Props) {
         },
       });
     }
+    if (!map.getLayer("depot-fill")) {
+      map.addLayer({ id: "depot-fill", type: "fill", source: "depots", paint: {
+        "fill-color": ["case", ["get", "invalid"], "#e47a6c", ["get", "draft"], "#e9c36b", ["get", "selected"], "#ddbbff", "#a898cb"],
+        "fill-opacity": ["case", ["get", "draft"], 0.4, 0.65],
+      } });
+      map.addLayer({ id: "depot-outline", type: "line", source: "depots", paint: { "line-color": ["case", ["get", "invalid"], "#b83e31", ["get", "draft"], "#ac7420", "#796297"], "line-width": 2, "line-dasharray": [3, 2] } });
+      map.addLayer({ id: "depot-rail-casing", type: "line", source: "depot-rails", minzoom: 11, paint: { "line-color": "#ebe5f4", "line-width": 5 } });
+      map.addLayer({ id: "depot-rail-lines", type: "line", source: "depot-rails", minzoom: 11, paint: {
+        "line-color": ["case", ["get", "invalid"], "#b83e31", ["get", "draft"], "#9b691f", "#67547d"], "line-width": 2,
+      } });
+      map.addLayer({ id: "depot-points", type: "circle", source: "depot-labels", paint: { "circle-radius": 5, "circle-color": "#796297", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+      map.addLayer({ id: "depot-text", type: "symbol", source: "depot-labels", minzoom: 9, layout: {
+        "text-field": ["get", "label"], "text-font": ["Open Sans Regular"], "text-size": 12, "text-offset": [0, 1.1], "text-anchor": "top",
+      }, paint: { "text-color": "#5f447e", "text-halo-color": "#fff", "text-halo-width": 2 } });
+      // Keep acquisition highlights above the yard surface.
+      map.moveLayer("affected-fill", "depot-rail-casing");
+      map.moveLayer("affected-outline", "depot-rail-casing");
+    }
     staticData.current = {
       network: p.network,
       demolished: p.project.demolished,
@@ -607,6 +655,12 @@ export function MapView(props: Props) {
       "line-color",
       p.dark ? "#f0c96a" : "#75530d",
     );
+    map.setPaintProperty("population-fill", "fill-opacity", p.populationOpacity * 0.6);
+    map.setPaintProperty("population-outline", "line-opacity", p.populationOpacity * 0.7);
+    map.setPaintProperty("population-labels", "text-opacity", Math.min(1, p.populationOpacity * 1.4));
+    map.setPaintProperty("preview-fill", "fill-color", p.invalidPreview ? "#d95745" : "#e9ad4b");
+    map.setPaintProperty("preview-outline", "line-color", p.invalidPreview ? "#b53b2f" : "#bf8835");
+    map.setPaintProperty("preview-outline", "line-width", p.invalidPreview ? 2.5 : 1.5);
   };
   useEffect(() => {
     if (!container.current) return;
@@ -618,12 +672,7 @@ export function MapView(props: Props) {
         [REGION.bbox[2], REGION.bbox[3]],
       ],
       fitBoundsOptions: {
-        padding: {
-          left: 75,
-          right: container.current.clientWidth < 760 ? 25 : container.current.clientWidth < 900 ? 320 : 400,
-          top: 130,
-          bottom: container.current.clientWidth < 760 ? container.current.clientHeight * 0.43 + 40 : 140,
-        },
+        padding: { left: 75, right: 30, top: 130, bottom: 140 },
       },
       attributionControl: { compact: true },
       // Keep the national snapshot navigable at its initial Sweden-wide extent.
@@ -637,6 +686,12 @@ export function MapView(props: Props) {
       setPopulationBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
     };
     map.on("moveend", updatePopulationBounds);
+    map.on("error", () => {
+      if (styleReady.current || fallbackStyle.current) return;
+      fallbackStyle.current = true;
+      latest.current.onBasemapError("Online basemap unavailable. Railway editing remains available on a plain background.");
+      map.setStyle({ version: 8, sources: {}, layers: [{ id: "offline-background", type: "background", paint: { "background-color": latest.current.dark ? "#18231f" : "#eef0e8" } }] });
+    });
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: false }),
       "bottom-left",
@@ -701,10 +756,15 @@ export function MapView(props: Props) {
       }
       if (dragging.current) return;
       const hits = map.queryRenderedFeatures(e.point, {
-        layers: ["affected-fill", "station-points", "row-hit"].filter(
+        layers: ["depot-fill", "depot-points", "depot-text", "affected-fill", "station-points", "station-labels", "station-major-labels", "row-hit"].filter(
           (id) => !!map.getLayer(id),
         ),
       });
+      const depot = hits.find(f => f.layer.id.startsWith("depot-"));
+      if (depot && !p.constructing) {
+        if (!p.depotEditable || p.depot?.id !== depot.properties.id) p.onDepot(depot.properties.id);
+        return;
+      }
       const building = hits.find((f) => f.layer.id === "affected-fill");
       if (building && (!p.constructing || e.originalEvent.altKey)) {
         const b = p.network.buildings.find(
@@ -721,9 +781,9 @@ export function MapView(props: Props) {
         }
         return;
       }
-      const station = hits.find((f) => f.layer.id === "station-points");
+      const station = hits.find((f) => ["station-points", "station-labels", "station-major-labels"].includes(f.layer.id));
       if (station && !p.constructing) {
-        p.onStation(station.properties.id);
+        if (!p.stationEditable || p.station?.id !== station.properties.id) p.onStation(station.properties.id);
         return;
       }
       const rowHits = hits.filter((f) => f.layer.id === "row-hit");
@@ -743,18 +803,11 @@ export function MapView(props: Props) {
         );
         return;
       }
-      const cell = map.queryRenderedFeatures(e.point, { layers: ["catchment-fill", "coverage-fill", "population-fill"].filter(id => !!map.getLayer(id)) })[0];
-      if (cell) {
-        const el = document.createElement("div");
-        const v = cell.properties;
-        el.className = "building-popup";
-        el.textContent = `SCB 2025 · ${Number(v.population).toLocaleString()} residents${v.share !== undefined ? ` · ${Math.round(v.share * 100)}% ${cell.layer.id === "coverage-fill" ? "combined catchment" : "station share"} (${Math.round(v.residents).toLocaleString()} weighted residents)${v.stationName ? ` · strongest station: ${v.stationName}` : ` · ${v.mode} access`}` : ""}`;
-        new maplibregl.Popup().setLngLat(e.lngLat).setDOMContent(el).addTo(map);
-      }
+      if (p.depotEditable) p.onDepotSnapMiss();
     });
     map.on("mousemove", (e) => {
       const features = map.queryRenderedFeatures(e.point, {
-        layers: ["row-hit", "station-points", "affected-fill", "selected-hit"].filter(
+        layers: ["row-hit", "station-points", "station-labels", "depot-fill", "depot-points", "depot-text", "affected-fill", "selected-hit"].filter(
           (id) => !!map.getLayer(id),
         ),
       });
@@ -780,6 +833,7 @@ export function MapView(props: Props) {
   }, []);
   useEffect(() => {
     styleReady.current = false;
+    fallbackStyle.current = false;
     mapRef.current?.setStyle(BASEMAPS[props.dark ? "dark" : "light"], {
       diff: false,
     });
@@ -798,9 +852,13 @@ export function MapView(props: Props) {
     props.layers,
     props.station,
     props.constructing,
+    props.depot,
+    props.depotEditable,
     props.catchment,
     props.coverage,
     props.populationMode,
+    props.populationOpacity,
+    props.invalidPreview,
     props.transitStops,
     population.cells,
   ]);
@@ -809,6 +867,56 @@ export function MapView(props: Props) {
     markers.current.forEach(m => m.remove());
     markers.current = [];
     if (!map) return;
+    if (props.depot) {
+      if (!props.depotEditable) return;
+      const depot = props.depot;
+      const corridor = props.network.corridors.find(c => c.id === depot.corridorId);
+      if (!corridor) return;
+      const frame = depotFrame(corridor, depot, Object.values(props.project.stations));
+      const outline = depotOutline(depot);
+      outline.forEach(([x, y], index) => {
+        const el = document.createElement("button");
+        el.className = "yard-corner-handle";
+        el.textContent = String(index + 1);
+        el.title = "Drag to reshape; Alt-click to remove corner";
+        el.setAttribute("aria-label", `Yard corner ${index + 1}`);
+        el.addEventListener("click", event => {
+          event.stopPropagation();
+          if (event.altKey) latest.current.onDepotVertex(index, null);
+        });
+        const marker = new maplibregl.Marker({ element: el, draggable: true }).setLngLat(frame.local(x, y) as [number, number]).addTo(map);
+        marker.on("dragstart", () => { dragging.current = true; });
+        marker.on("dragend", () => {
+          dragging.current = false; suppressClick.current = true;
+          const coordinates = frame.fromMap(marker.getLngLat().toArray());
+          marker.setLngLat(frame.local(x, y) as [number, number]);
+          latest.current.onDepotVertex(index, coordinates);
+        });
+        markers.current.push(marker);
+        if (outline.length < 32) {
+          const next = outline[(index + 1) % outline.length];
+          const midpoint: [number, number] = [(x + next[0]) / 2, (y + next[1]) / 2];
+          const add = document.createElement("button");
+          add.className = "yard-add-handle"; add.textContent = "+";
+          add.setAttribute("aria-label", `Add yard corner after ${index + 1}`);
+          add.addEventListener("click", event => { event.stopPropagation(); latest.current.onDepotVertex(index, midpoint, true); });
+          markers.current.push(new maplibregl.Marker({ element: add }).setLngLat(frame.local(...midpoint) as [number, number]).addTo(map));
+        }
+      });
+      const yard = depotGeometry(corridor, depot, Object.values(props.project.stations), props.network.corridors);
+      const connectionLabels: [string, number[] | undefined][] = [
+        ["Entrance", yard.connector.geometry.coordinates[0]],
+        ["Exit", yard.exitConnector?.geometry.coordinates.at(-1)],
+      ];
+      connectionLabels.forEach(([label, coordinates]) => {
+        if (!coordinates) return;
+        const element = document.createElement("div");
+        element.className = "yard-connection-label";
+        element.textContent = label;
+        markers.current.push(new maplibregl.Marker({ element, anchor: "bottom" }).setLngLat(coordinates as [number, number]).addTo(map));
+      });
+      return;
+    }
     if (props.station) {
       if (!props.stationEditable) return;
       const station = props.station;
@@ -908,11 +1016,23 @@ export function MapView(props: Props) {
     props.station?.lateralOffsetMeters,
     props.station?.lengthMeters,
     props.stationEditable,
+    props.depot,
+    props.depotEditable,
+    props.project.stations,
     props.network,
   ]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !props.focus) return;
+    const depot = props.depot?.id === props.focus.id ? props.depot : props.project.depots?.[props.focus.id];
+    const depotCorridor = depot && props.network.corridors.find(c => c.id === depot.corridorId);
+    if (depot && depotCorridor) {
+      const yard = depotGeometry(depotCorridor, depot, Object.values(props.project.stations), props.network.corridors);
+      const bounds = bbox(featureCollection<import("geojson").Geometry>([yard.area, ...yard.connections]));
+      map.fitBounds(bounds as [number, number, number, number], { padding: cameraPadding(map, 100, 160, 110), maxZoom: 17, duration: 700 });
+      return;
+    }
+
     map.setPadding({ left: 0, right: 0, top: 0, bottom: 0 });
     const s = props.project.stations[props.focus.id] ||
       (props.station?.id === props.focus.id ? props.station : undefined);
@@ -927,12 +1047,7 @@ export function MapView(props: Props) {
           [bounds[2], bounds[3]],
         ],
         {
-            padding: {
-            left: 80,
-            right: map.getContainer().clientWidth < 760 ? 25 : map.getContainer().clientWidth < 900 ? 330 : 400,
-            top: 180,
-            bottom: map.getContainer().clientWidth < 760 ? map.getContainer().clientHeight * 0.43 + 40 : 170,
-          },
+            padding: cameraPadding(map, 180, 170, 80),
           maxZoom: 15.5,
           duration: 700,
         },
@@ -944,7 +1059,7 @@ export function MapView(props: Props) {
         map.fitBounds(
           [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
           {
-            padding: { left: 80, right: map.getContainer().clientWidth < 760 ? 25 : 400, top: 150, bottom: 140 },
+            padding: cameraPadding(map, 150, 140, 80),
             maxZoom: 18,
             duration: 650,
           },
@@ -966,18 +1081,13 @@ export function MapView(props: Props) {
         const bounds = new maplibregl.LngLatBounds();
         coords.forEach((p) => bounds.extend(p as [number, number]));
         map.fitBounds(bounds, {
-            padding: {
-            left: 85,
-            right: map.getContainer().clientWidth < 760 ? 25 : map.getContainer().clientWidth < 900 ? 330 : 420,
-            top: 160,
-            bottom: map.getContainer().clientWidth < 760 ? map.getContainer().clientHeight * 0.43 + 40 : 140,
-          },
+            padding: cameraPadding(map, 160, 140, 85),
           maxZoom: 15,
           duration: 900,
         });
       }
     }
-  }, [props.focus]);
+  }, [props.focus, props.panelSize]);
   return (
     <>
     <div

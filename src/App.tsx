@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Warehouse,
   ArrowUpRight,
   Check,
   ChevronDown,
@@ -23,7 +24,11 @@ import {
   Zap,
   ArrowRight,
   Minus,
+  ListTree,
 } from "lucide-react";
+import { YardPanel } from "./YardPanel";
+import { NetworkOverview } from "./NetworkOverview";
+import { applyDepot, defaultDepotOutline, normalizeDepot, depotAffectedBuildings, depotGeometry, depotOutline, validDepotOutline } from "./depots";
 import { MapView } from "./MapView";
 import { REGION, SPEEDS, STATION_LENGTHS, WIDTHS } from "./config";
 import {
@@ -50,23 +55,26 @@ import {
   sectionMatches,
 } from "./construction";
 import {
+  prepareRouting,
   routeSelection,
   routeSelectionVia,
   selectionEndpoints,
 } from "./routing";
 import { loadProject, saveProject } from "./persistence";
-import { resizeStationSpan, suggestStationName } from "./stations";
+import { resizeStationSpan, suggestDepotName, suggestStationName } from "./stations";
 import { calculateCatchments, stopIndex, surroundingBounds } from "./catchment";
 import type { TransitStop } from "./catchment";
 import { usePopulationAreas } from "./population";
+import { DEMO_BUDGET, demoProject, serviceOpportunities } from "./planning";
 import type { Position } from "geojson";
-import type { Network, Project, RouteEndpoint, Selection, Tool, TrackCount } from "./types";
+import type { Depot, Network, Project, RouteEndpoint, Selection, Tool, TrackCount } from "./types";
 const tools = [
   { id: "select", label: "Select", icon: MousePointer2, key: "1" },
   { id: "build", label: "Build track", icon: TrainTrack, key: "2" },
   { id: "passing", label: "Passing section", icon: GitBranch, key: "3" },
   { id: "overtaking", label: "Overtaking section", icon: Layers, key: "4" },
   { id: "station", label: "Station", icon: Landmark, key: "5" },
+  { id: "depot", label: "Yard", icon: Warehouse, key: "7" },
   { id: "delete", label: "Delete", icon: Trash2, key: "6" },
 ] as const;
 export default function App() {
@@ -95,7 +103,7 @@ export default function App() {
       row: true,
       buildings: true,
       roads: false,
-      population: true,
+      population: false,
       catchment: false,
       transit: false,
     }),
@@ -107,7 +115,18 @@ export default function App() {
     [focus, setFocus] = useState<{ id: string; nonce: number } | null>(null),
     [deleteLoops, setDeleteLoops] = useState(false),
     [showAffected, setShowAffected] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine);
+  const [mapWarning, setMapWarning] = useState("");
+  const [showInventory, setShowInventory] = useState(false);
+  const [inventoryQuery, setInventoryQuery] = useState("");
+  const [serviceFrequency, setServiceFrequency] = useState(8);
+  const [draftDepot, setDraftDepot] = useState<Depot | null>(null);
+  const [depotEditing, setDepotEditing] = useState(false);
+  const [depotPlacing, setDepotPlacing] = useState<"entrance" | "exit" | null>(null);
+  const [depotError, setDepotError] = useState("");
+  const depotEditable = !!draftDepot && (!project.depots?.[draftDepot.id] || depotEditing);
   const [populationMode, setPopulationMode] = useState<"density" | "catchment">("density");
+  const [populationOpacity, setPopulationOpacity] = useState(0.45);
   useEffect(() => {
     fetch(REGION.dataUrl)
       .then((r) => {
@@ -117,7 +136,7 @@ export default function App() {
           );
         return r.json();
       })
-      .then(setNetwork)
+      .then(data => { prepareRouting(data.corridors, data.stations); setNetwork(data); })
       .catch((e) => setError(e.message));
   }, []);
   useEffect(() => {
@@ -145,7 +164,28 @@ export default function App() {
     };
     return { ...edited, coordinates: stationCenter(stationCorridor, edited) };
   }, [stationRecord, stationCorridor, stationPosition, stationOffset]);
-  const stationEditable = !!draftStation || stationEditing;
+  const stationEditable = !!station && (!!draftStation || stationEditing);
+  const depotCorridor = network?.corridors.find(c => c.id === draftDepot?.corridorId);
+  const yardGeometry = useMemo(() => draftDepot && depotCorridor
+    ? depotGeometry(depotCorridor, draftDepot, Object.values(project.stations), network?.corridors) : null,
+    [draftDepot, depotCorridor, project.stations, network]);
+  const yardAffected = useMemo(() => depotEditable && yardGeometry && network
+    ? depotAffectedBuildings(yardGeometry, network.buildings, project.demolished) : [],
+    [depotEditable, yardGeometry, network, project.demolished]);
+  const yardConnectionError = yardGeometry?.layoutError || "";
+  const infrastructureEditing = stationEditable || depotEditable;
+  const editorRef = useRef<HTMLElement>(null);
+  const [editorSize, setEditorSize] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => { editorRef.current?.scrollTo({ top: 0 }); }, [infrastructureEditing, station?.id, draftDepot?.id]);
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) { setEditorSize(null); return; }
+    const update = () => setEditorSize({ width: Math.round(editor.getBoundingClientRect().width), height: Math.round(editor.getBoundingClientRect().height) });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(editor);
+    return () => observer.disconnect();
+  }, [tool, station?.id, draftDepot?.id, selection, anchor, infrastructureEditing]);
   const catchmentStations = useMemo(() => [...Object.values(project.stations).filter(s => s.id !== station?.id), ...(station ? [{ ...station, name: stationName.trim() }] : [])], [project.stations, station, stationName]);
   const catchmentGeometryKey = catchmentStations
     .map(s => `${s.id}:${s.coordinates[0].toFixed(6)},${s.coordinates[1].toFixed(6)}`)
@@ -159,6 +199,12 @@ export default function App() {
       return r.json();
     }).then(data => setTransit({ stops: data.stops, status: data.coverage === "partial" ? "OSM stops: partial coverage (Overpass + CARTO); service unverified" : "OSM stop proximity; service unverified" }))
       .catch(() => setTransit({ stops: [], status: "OSM stops unavailable; walk, cycle and car only" }));
+  }, []);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
   }, []);
   const transitIndex = useMemo(() => stopIndex(transit.stops), [transit.stops]);
   const calculatedCatchments = useMemo(() => !population.loading && !population.error
@@ -179,11 +225,14 @@ export default function App() {
     };
   }, [calculatedCatchments, catchmentNamesKey]);
   const catchment = station ? catchments?.byStation[station.id] || null : null;
+  const opportunities = useMemo(() => network ? serviceOpportunities(network, project,
+    Object.fromEntries(Object.entries(calculatedCatchments?.byStation || {}).map(([id, result]) => [id, result.residents])), serviceFrequency) : [],
+  [network, project, calculatedCatchments, serviceFrequency]);
   const expansion = tool === "passing" || tool === "overtaking";
   const previewTracks = expansion ? (tool === "passing" ? 2 : 4) : tracks;
   const preview = useMemo(
     () =>
-      station && stationCorridor
+      station && stationCorridor && stationEditable
         ? [stationEnvelope(stationCorridor, station, stationLength, platforms)]
         : selection && network
           ? selectionParts(selection).flatMap((part) => {
@@ -205,6 +254,7 @@ export default function App() {
     [
       station,
       stationCorridor,
+      stationEditable,
       stationLength,
       platforms,
       selection,
@@ -309,6 +359,11 @@ export default function App() {
   const builtKm = effective.reduce((n, s) => n + s.end - s.start, 0) / 1000;
   const changeTool = (next: Tool) => {
     setTool(next);
+    setDraftDepot(null);
+    setDepotEditing(false);
+    setDepotPlacing(null);
+    setDepotError("");
+    if (next === "depot") setSelection(null);
     setAnchor(null);
     setRouteError("");
     setDeleteLoops(false);
@@ -328,6 +383,8 @@ export default function App() {
       const item = tools.find((t) => t.key === e.key);
       if (item) changeTool(item.id);
       if (e.key === "Escape") {
+        if (infrastructureEditing) { cancelInfrastructureEdit(); return; }
+        setDraftDepot(null);
         setStationId(null);
         setDraftStation(null);
         setStationEditing(false);
@@ -338,8 +395,9 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, []);
+  });
   const selectStation = (id: string, fly = false) => {
+    setDraftDepot(null);
     const s = project.stations[id];
     if (!s) return;
     setAnchor(null);
@@ -356,6 +414,41 @@ export default function App() {
     setStationLength(s.lengthMeters);
     setPlatforms(s.platforms);
     if (fly) setFocus({ id, nonce: Date.now() });
+  };
+  const selectDepot = (depot: Depot, fly = false) => {
+    changeTool("depot");
+    setDraftDepot({ ...depot });
+    setDepotEditing(false);
+    setDepotError("");
+    if (fly) setFocus({ id: depot.id, nonce: Date.now() });
+  };
+  const cancelInfrastructureEdit = () => {
+    setDepotError(""); setDepotPlacing(null); setDepotEditing(false);
+    if (draftDepot) { setDraftDepot(project.depots?.[draftDepot.id] || null); return; }
+    if (stationId && project.stations[stationId]) selectStation(stationId);
+    else { setDraftStation(null); setStationEditing(false); }
+  };
+  const changeDepot = (next: Depot) => {
+    if (next.outline && !validDepotOutline(next.outline)) {
+      setDepotError("Keep a boundary of at least 100 square metres, with no crossing edges or duplicate corners.");
+      return;
+    }
+    setDepotError(""); setDraftDepot(normalizeDepot(next));
+    if (next.direction !== draftDepot?.direction) setFocus({ id: next.id, nonce: Date.now() });
+  };
+  const editDepotVertex = (index: number, coordinates: [number, number] | null, insert = false) => {
+    if (!draftDepot || !depotEditable) return;
+    const outline = [...depotOutline(draftDepot)];
+    if (insert && coordinates) outline.splice(index + 1, 0, coordinates);
+    else if (coordinates) outline[index] = coordinates;
+    else if (outline.length > 3) outline.splice(index, 1);
+    changeDepot({ ...draftDepot, outline });
+  };
+  const commitDepot = () => {
+    if (!draftDepot || !depotEditable || !draftDepot.name.trim() || depotError || yardConnectionError || depotPlacing) return;
+    const yard = normalizeDepot({ ...draftDepot, name: draftDepot.name.trim() });
+    setProject(p => applyDepot(p, yard, yardAffected));
+    setDraftDepot(yard); setDepotEditing(false); setDirty(true); notify("Yard built.");
   };
   const startRoute = () => {
     setSelection(null);
@@ -396,6 +489,23 @@ export default function App() {
     setRouteError("");
   };
   const selectCorridor = (id: string, position: number) => {
+    if (tool === "depot") {
+      if (draftDepot && depotEditable) {
+        if (depotPlacing === "exit") changeDepot({ ...draftDepot, exit: { corridorId: id, position } });
+        else if (depotPlacing === "entrance") changeDepot({ ...draftDepot, corridorId: id, position });
+        if (depotPlacing) notify(`${depotPlacing === "exit" ? "Exit" : "Entrance"} snapped to ${network?.corridors.find(c => c.id === id)?.name || "railway"}.`);
+        setDepotPlacing(null);
+        return;
+      }
+      const corridor = network!.corridors.find(candidate => candidate.id === id)!;
+      const name = suggestDepotName(pointAt(corridor, position), network!.places, project.depots || {});
+      const yard = normalizeDepot({ id: crypto.randomUUID(), name, corridorId: id, position, tracks: 6, lengthMeters: 250, side: 1, outline: defaultDepotOutline() });
+      setDraftDepot(yard);
+      setFocus({ id: yard.id, nonce: Date.now() });
+      setDepotEditing(true); setDepotError(""); setDepotPlacing(null);
+      return;
+    }
+    setDraftDepot(null);
     if (tool === "station") {
       const corridor = network!.corridors.find((candidate) => candidate.id === id)!;
       const name = suggestStationName(pointAt(corridor, position), network!.places, project.stations);
@@ -594,6 +704,7 @@ export default function App() {
               (c) => c.id === s.corridorId && s.end <= c.length + 0.1,
             ),
         ) ||
+        Object.values(p.depots || {}).some(d => !network?.corridors.some(c => c.id === d.corridorId && d.position <= c.length) || (d.exit && !network?.corridors.some(c => c.id === d.exit!.corridorId && d.exit!.position <= c.length))) ||
         Object.values(p.stations).some(
           (s) =>
             !network?.corridors.some(
@@ -603,6 +714,7 @@ export default function App() {
       )
         throw new Error("The saved network differs from this data snapshot.");
       setProject(p);
+      setDraftDepot(null);
       setSelection(null);
       setAnchor(null);
       setRouteError("");
@@ -626,24 +738,37 @@ export default function App() {
           preview={tool === "delete" ? [] : preview}
           previewTracks={previewTracks}
           previewElectrified={electrified}
-          affected={affected.map((b) => b.id)}
+          affected={(depotEditable ? yardAffected : affected).map((b) => b.id)}
           blocked={blocked.map((r) => r.id)}
           dark={dark}
           layers={layers}
           catchment={catchment}
           coverage={catchments?.coverage || null}
           populationMode={populationMode}
+          populationOpacity={populationOpacity}
+          invalidPreview={!!invalid && (!!selection || !!station)}
+          panelSize={editorSize}
           coverageStatus={population.error || (population.loading ? "Loading catchments…" : catchmentStations.length ? "" : "No stations built")}
           transitStops={transit.stops}
           station={station ? { ...station, name: stationName.trim(), lengthMeters: stationLength, platforms } : undefined}
           constructing={tool === "build" || expansion}
           focus={focus}
           onCorridor={selectCorridor}
+          depot={draftDepot}
+          depotEditable={depotEditable}
+          onDepotVertex={editDepotVertex}
+          onDepotSnapMiss={() => { if (depotPlacing) setDepotError("No railway connection here. Choose a highlighted right of way."); }}
+          onDepot={(id) => {
+            const depot = project.depots?.[id];
+            if (!depot || (depotEditable && draftDepot?.id === id)) return;
+            selectDepot(depot);
+          }}
           onStation={(id) => selectStation(id)}
           onHandle={placeEndpoint}
           onWaypoint={updateWaypoint}
           onStationMove={moveStation}
           onStationResize={resizeStation}
+          onBasemapError={setMapWarning}
           stationEditable={stationEditable}
           onReady={() => setReady(true)}
         />
@@ -663,6 +788,10 @@ export default function App() {
             <span className={dirty ? "unsaved-dot" : "saved-dot"} />
             {dirty ? "Unsaved changes" : "Local project"}
           </span>
+          <button onClick={() => setShowInventory(value => !value)} aria-pressed={showInventory} title="Open network overview">
+            <ListTree size={15} />
+            Network
+          </button>
           <button disabled={!network} onClick={load} title="Load saved project">
             <Download size={15} />
             Load
@@ -681,10 +810,10 @@ export default function App() {
         </div>
       </header>
       <nav className="toolbar" aria-label="Construction tools">
-        {tools.map(({ id, label, icon: Icon, key }, i) => (
+        {tools.map(({ id, label, icon: Icon, key }) => (
           <button
             key={id}
-            className={`${tool === id ? "active" : ""} ${i === 5 ? "delete-tool" : ""}`}
+            className={`${tool === id ? "active" : ""} ${id === "delete" ? "delete-tool" : ""}`}
             onClick={() => changeTool(id)}
             aria-label={label}
             title={`${label} · ${key}`}
@@ -717,6 +846,10 @@ export default function App() {
                 <button aria-pressed={populationMode === "density"} onClick={() => { setPopulationMode("density"); setLayers(l => ({ ...l, population: true })); }}>Density</button>
                 <button aria-pressed={populationMode === "catchment"} onClick={() => { setPopulationMode("catchment"); setLayers(l => ({ ...l, population: true })); }}>All catchments</button>
               </div>
+              <label className="layer-intensity">
+                <span>Planning overlay intensity <b>{Math.round(populationOpacity * 100)}%</b></span>
+                <input type="range" min="0.15" max="1" step="0.05" value={populationOpacity} onChange={event => setPopulationOpacity(Number(event.target.value))} />
+              </label>
               {(
                 [
                   ["row", "Available ROW"],
@@ -742,14 +875,28 @@ export default function App() {
           )}
         </div>
       </div>
-      <aside className="sidebar">
+      {showInventory && <NetworkOverview project={project} effective={effective} opportunities={opportunities} query={inventoryQuery}
+        frequency={serviceFrequency} onFrequency={setServiceFrequency}
+        onQuery={setInventoryQuery} onClose={() => setShowInventory(false)}
+        onStation={selected => { setShowInventory(false); selectStation(selected.id, true); }}
+        onDepot={selected => { setShowInventory(false); selectDepot(selected, true); }}
+        onDemo={() => {
+          if (!network || (dirty && !window.confirm("Replace the current unsaved workspace with the deterministic demo network?"))) return;
+          const demo = demoProject(network, REGION.key);
+          setProject(demo); setSelection(null); setAnchor(null); setDraftDepot(null); setDraftStation(null); setStationId(null);
+          setShowInventory(false); setDirty(true); notify("Deterministic demo network loaded.");
+          const first = Object.values(demo.stations)[0];
+          if (first) setFocus({ id: first.id, nonce: Date.now() });
+        }} />}
+      {(tool !== "select" || station || selection || anchor) && <aside ref={editorRef} className={`sidebar ${infrastructureEditing ? "infrastructure-edit-overlay" : ""}`} role={infrastructureEditing ? "dialog" : undefined} aria-label={infrastructureEditing ? stationEditable ? "Edit station" : "Edit yard" : undefined}>
+        {infrastructureEditing && <button className="edit-back" onClick={cancelInfrastructureEdit}><X size={15} />Close editor</button>}
         <div className="sidebar-heading">
-          <span className="eyebrow">INFRASTRUCTURE EDITOR</span>
+          <span className="eyebrow">{infrastructureEditing ? "EDIT INFRASTRUCTURE" : "YOUR RAILWAY"}</span>
         </div>
         <div className="editor-title">
           <h1>
-            {station
-              ? "Station"
+            {tool === "depot" ? depotEditable ? "Edit yard" : "Yard" : station
+              ? stationEditable ? "Edit station" : "Station"
               : selection
                 ? tool === "delete"
                   ? "Remove infrastructure"
@@ -762,7 +909,7 @@ export default function App() {
                   ? "Build a station"
                   : anchor ? "Choose your destination" : project.sections.length ? "Plan your next route" : "Your railway starts here."}
           </h1>
-          {(station || selection || anchor) && (
+          {!infrastructureEditing && (station || selection || anchor) && (
             <button
               className="icon-button"
               title="Clear selection"
@@ -779,7 +926,18 @@ export default function App() {
             </button>
           )}
         </div>
-        {!station && !selection ? (
+        {tool === "depot" ? (
+          <YardPanel yard={draftDepot} yards={Object.values(project.depots || {})} editable={depotEditable}
+            placing={depotPlacing} affected={yardAffected} error={depotError || yardConnectionError}
+            onChange={changeDepot} onSelect={d => selectDepot(d, true)}
+            onEdit={() => setDepotEditing(true)} onCancel={() => { if (depotEditable) cancelInfrastructureEdit(); else setDraftDepot(null); }}
+            onCommit={commitDepot} onPlace={setDepotPlacing} onFocusBuilding={id => setFocus({ id, nonce: Date.now() })}
+            onRemove={() => {
+              if (!draftDepot) return;
+              setProject(p => { const depots = { ...p.depots }; delete depots[draftDepot.id]; return { ...p, depots }; });
+              setDraftDepot(null); setDepotEditing(false); setDirty(true); notify("Yard removed.");
+            }} />
+        ) : !station && !selection ? (
           <>
             {tool === "station" ? (
               <div className="station-empty">
@@ -876,6 +1034,7 @@ export default function App() {
                     <Pencil size={15} /> Edit station
                   </button>
                 )}
+                {stationEditable && <>
                 <div className="editor-section">
                   <label className="field-label" htmlFor="station-name">
                     STATION NAME
@@ -889,13 +1048,17 @@ export default function App() {
                     maxLength={80}
                   />
                 </div>
+                </>}
+                {!stationEditable && <>
                 <div className="editor-section catchment-summary">
-                  <div className="field-label">CATCHMENT</div>
+                  <div className="field-label">POTENTIAL REACH</div>
                   {population.loading ? <p className="helper">Loading SCB population…</p> : population.error ? <p role="status" className="helper">{population.error}. Catchment unavailable.</p> : catchment && <>
-                    <strong className="catchment-total">{Math.round(catchment.residents).toLocaleString()} <small>residents</small></strong>
+                    <strong className="catchment-total">{Math.round(catchment.residents).toLocaleString()} <small>potential residents</small></strong>
                     <div className="catchment-modes">{(["walk", "cycle", "transit", "car"] as const).map(mode => <span key={mode}><i className={`mode-dot ${mode}`} />{mode === "transit" ? "Feeder" : mode[0].toUpperCase() + mode.slice(1)}<b>{Math.round(catchment.modes[mode]).toLocaleString()}</b></span>)}</div>
                   </>}
                 </div>
+                </>}
+                {stationEditable && <>
                 <div className="editor-section">
                   <label className="field-label">
                     STATION LENGTH <span>{stationLength} metres</span>
@@ -974,6 +1137,7 @@ export default function App() {
                       : "No roads intersect the proposed footprint. Buildings can be acquired; roads cannot be crossed."}
                   </p>
                 </div>}
+                </>}
               </>
             ) : (
               <>
@@ -1171,7 +1335,7 @@ export default function App() {
                 {invalid}
               </p>
             )}
-            {(!station || stationEditable) && <>
+            {(!station || stationEditable) && <div className="editor-action-strip">
               <button
                 className={`primary full ${tool === "delete" ? "danger" : ""}`}
                 disabled={!!routeError || (tool !== "delete" && !!invalid)}
@@ -1191,15 +1355,16 @@ export default function App() {
                   ? "No refund in this prototype."
                   : "Preview only until applied."}
               </p>
-            </>}
-            {oldStation && station && (
+              {stationEditable && <button className="secondary full" onClick={cancelInfrastructureEdit}>Cancel changes</button>}
+            </div>}
+            {oldStation && station && stationEditable && (
               <button className="station-delete" onClick={deleteStation}>
                 <Trash2 size={15} /> Remove station
               </button>
             )}
           </>
         )}
-      </aside>
+      </aside>}
       <div className="bottom-bar">
         <div className="map-legend">
           <span>
@@ -1218,6 +1383,7 @@ export default function App() {
             <i className="legend-electric" />
             Electrified
           </span>
+          <span><i className="legend-depot" />Yard</span>
         </div>
         <div className="network-stats">
           <div>
@@ -1229,8 +1395,8 @@ export default function App() {
           </div>
           <i />
           <div>
-            <strong>{compactMoney(project.spent)}</strong>
-            <span>TOTAL INVESTMENT</span>
+            <strong className={project.spent > DEMO_BUDGET ? "budget-over" : ""}>{compactMoney(Math.abs(DEMO_BUDGET - project.spent))}</strong>
+            <span>{project.spent > DEMO_BUDGET ? "OVER DEMO BUDGET" : "DEMO BUDGET LEFT"}</span>
           </div>
           <i />
           <div>
@@ -1241,8 +1407,8 @@ export default function App() {
       </div>
       <div className="map-hint">
         <span className="live-dot" />
-        {station
-          ? "Station footprint · edit its name and infrastructure before applying"
+        {tool === "depot" ? depotEditable ? depotPlacing ? `Click a railway for the ${depotPlacing}` : "Drag the yard corners to reshape its boundary" : "Click a railway to place a yard" : station
+          ? stationEditable ? "Drag station handles to move or resize" : "Choose Edit station to change its infrastructure"
           : tool === "station"
             ? "Click available ROW to place a new station"
           : selection
@@ -1251,6 +1417,7 @@ export default function App() {
                 ? anchor ? "Start set · Click a railway to place B" : "Click a railway to place A, then B"
                 : "Select a corridor to explore its possibilities"}
       </div>
+      {(!online || mapWarning) && <div className="connectivity-status" role="status"><AlertTriangle size={14} />{!online ? "Offline · local railway data remains editable" : mapWarning}{online && <button aria-label="Dismiss map warning" onClick={() => setMapWarning("")}><X size={12} /></button>}</div>}
       {(!network || !ready) && (
         <div className="loading-card">
           <TrainTrack size={23} />
@@ -1288,6 +1455,8 @@ export default function App() {
               className="danger"
               onClick={() => {
                 setProject(emptyProject(REGION.key));
+                setDraftDepot(null);
+                setDraftStation(null);
                 setSelection(null);
                 setAnchor(null);
                 setRouteError("");

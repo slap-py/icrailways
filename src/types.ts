@@ -1,7 +1,22 @@
 import type { LineString, Polygon, MultiPolygon, Position } from "geojson";
 export type TrackCount = 1 | 2 | 3 | 4;
 export type Tool =
-  "select" | "build" | "passing" | "overtaking" | "station" | "delete";
+  "select" | "build" | "passing" | "overtaking" | "station" | "depot" | "delete";
+export interface Depot {
+  id: string;
+  name: string;
+  corridorId: string;
+  position: number;
+  /** Cached derived capacity; legacy saves without outline use these to recover their footprint. */
+  tracks: number;
+  lengthMeters: number;
+  side: 1 | -1;
+  direction?: 1 | -1;
+  /** Editable vertices in metres relative to the rail connection and direction. */
+  outline?: [number, number][];
+  through?: boolean;
+  exit?: RouteEndpoint;
+}
 export interface Corridor {
   id: string;
   name: string;
@@ -66,6 +81,7 @@ export interface Project {
   sections: Section[];
   expansions: Expansion[];
   stations: Record<string, Station>;
+  depots?: Record<string, Depot>;
   demolished: string[];
   spent: number;
 }

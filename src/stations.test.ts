@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resizeStationSpan, suggestStationName, stationPreviews } from "./stations";
+import { resizeStationSpan, suggestDepotName, suggestStationName, stationPreviews } from "./stations";
 import type { Corridor, Station } from "./types";
 import { pointAt, stationAlignedLine, stationCenter, stationEnds, stationEnvelope, stationPlacement, stationPlatformLine } from "./geometry";
 import { distance, lineString, polygon } from "@turf/turf";
@@ -11,6 +11,12 @@ test("station names use the nearest settlement and unique suffixes, with an hone
   assert.equal(suggestStationName(station.coordinates, places, {}), "Kumla");
   assert.equal(suggestStationName(station.coordinates, places, { s: station }), "Kumla 2");
   assert.equal(suggestStationName([20, 68], places, {}), "New station");
+});
+test("yard names use the nearest settlement and remain unique", () => {
+  const places = [{ id: "p", name: "Norrköping", coordinates: station.coordinates }];
+  assert.equal(suggestDepotName(station.coordinates, places, {}), "Norrköping yard");
+  assert.equal(suggestDepotName(station.coordinates, places, { d: { id: "d", name: "Norrköping yard", corridorId: "c", position: 0, tracks: 4, lengthMeters: 200, side: 1 } }), "Norrköping yard 2");
+  assert.equal(suggestDepotName([20, 68], places, {}), "New rail yard");
 });
 test("map preview replaces the committed name immediately and cancel restores it", () => {
   const saved = { s: station };

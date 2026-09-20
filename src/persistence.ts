@@ -1,7 +1,8 @@
+import { normalizeDepot, validDepotOutline } from "./depots";
 import type { Project } from "./types";
 const KEY = "right-of-way-project-v1";
 export function saveProject(project: Project) {
-  localStorage.setItem(KEY, JSON.stringify(project));
+  localStorage.setItem(KEY, JSON.stringify({ ...project, depots: Object.fromEntries(Object.entries(project.depots || {}).map(([id, depot]) => [id, normalizeDepot(depot)])) }));
 }
 export function loadProject(networkKey: string): Project {
   const raw = localStorage.getItem(KEY);
@@ -80,5 +81,17 @@ export function loadProject(networkKey: string): Project {
         ...station,
         lateralOffsetMeters: station.lateralOffsetMeters || 0,
       }]));
-  return { ...p, sections, stations };
+  const depots = p.depots ?? {};
+  if (typeof depots !== "object" || Array.isArray(depots) || Object.entries(depots).some(([id, d]) =>
+    !d || d.id !== id || typeof d.name !== "string" || !d.name.trim() ||
+    typeof d.corridorId !== "string" || !Number.isFinite(d.position) || d.position < 0 ||
+    !Number.isInteger(d.tracks) || d.tracks < (d.outline ? 0 : 1) || d.tracks > (d.outline ? 1000 : 12) ||
+    !Number.isFinite(d.lengthMeters) || d.lengthMeters < (d.outline ? 0 : 150) || d.lengthMeters > (d.outline ? 10000 : 600) ||
+    ![1, -1].includes(d.side) ||
+    (d.direction !== undefined && ![1, -1].includes(d.direction)) ||
+    (d.outline !== undefined && !validDepotOutline(d.outline)) ||
+    (d.through !== undefined && typeof d.through !== "boolean") ||
+    (d.exit !== undefined && (!d.exit || typeof d.exit.corridorId !== "string" || !Number.isFinite(d.exit.position) || d.exit.position < 0))
+  )) throw new Error("Saved depot data is invalid.");
+  return { ...p, sections, stations, depots: Object.fromEntries(Object.entries(depots).map(([id, depot]) => [id, normalizeDepot(depot)])) };
 }

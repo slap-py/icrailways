@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173**. `npm run build` creates a static build in `dist`; `npm run preview` serves that build. The last successfully imported railway network, building footprints, and station-area road constraints are bundled. An internet connection is needed for the CARTO vector basemap and web fonts, but no API key, account, or backend is needed.
+Open **http://127.0.0.1:5173**. `npm run build` creates a static build in `dist`; `npm run preview` serves that build. The last successfully imported railway network, building footprints, and station-area road constraints are bundled. An internet connection improves the CARTO basemap and web fonts, but railway editing falls back to a plain local-data map when the basemap is unavailable. No API key, account, or backend is needed.
 
 ## Try the experiment
 
@@ -19,9 +19,12 @@ Open **http://127.0.0.1:5173**. `npm run build` creates a static build in `dist`
 2. After A and B are placed, clicking near either side moves the closest endpoint; either marker can also be dragged. Drag the middle of the amber route onto another ROW to add a waypoint, and click a waypoint marker to remove it. Fine-tune distances in the editor, choose 1–4 tracks, speed, and electrification, then apply construction to the entire path. Use the affected-building scroller to review and locate property impacts. **Start a new route**, ×, or Escape clears the preview.
 3. **Select** (**1**) a built section to edit its track count or speed. Downgrades are allowed. A partial edit splits the stored section and preserves its neighbors.
 4. **Passing section** (**3**) adds one track to a continuously built single-track section. **Overtaking section** (**4**) adds two to double track. Set section endpoints before applying. Additional tracks are stored separately and are clipped when replacement track is built over them.
-5. Choose **Station** (**5**) and click any available ROW to place a fictional station. Drag its green centre handle to move it along the railway or up to 250 m beside an inaccurate mapped centreline. Drag platform ends A and B to resize in 10 m steps; **Resize both ends together** switches between centred and one-ended expansion. Edit its suggested name and platform count before building. Red roads block Apply; red buildings can be acquired and demolished. Built stations open read-only and require **Edit station** before handles or controls activate; they can also be removed with no refund. Only user-built stations appear on the map.
+5. Choose **Station** (**5**) and click any available ROW to place a fictional station. Drag its green centre handle to move it along the railway or up to 250 m beside an inaccurate mapped centreline. Drag platform ends A and B to resize in 10 m steps; **Resize both ends together** switches between centred and one-ended expansion. Edit its suggested name and platform count before building. Red roads block Apply; red buildings can be acquired and demolished. Click a built station marker or label to open its overview and catchment. **Edit station** opens a separate editing panel with the name, size, platform controls, map handles, and removal action. Close or Cancel discards the draft; Apply returns to the overview. Only user-built stations appear on the map.
 6. **Delete** (**6**) removes only the selected built section, or just its passing/overtaking additions. ROW remains available.
-7. **Save** stores the project in this browser. **Load** explicitly restores it. **New project** clears the working project but leaves the saved version intact until Save is used again.
+7. **Yard** (**7**) places a place-named yard beside a railway (for example, **Norrköping yard**). Choose its side; drag its numbered polygon corners, click + handles to insert corners, or Alt-click a corner to remove it. A boundary must be simple (no crossing edges) and at least 100 square metres. **Connect both ends** creates a through yard; **Choose exit connection** lets you attach its labelled far end to any railway point. Sidings follow the moving centreline of long or curved boundaries while retaining 6 m spacing, 4 m side clearance, lane order, and concave-footprint containment. Track count and usable length are calculated from the boundary and shown as read-only values. Very narrow or short shapes show an error instead of overlapping tracks. **Reverse yard direction** flips the yard along the railway while keeping its physical side; the automatic exit is recalculated. **Build yard** acquires and clears buildings in the footprint and both approach tracks, charging each building only once. Select a built yard for its overview, then **Edit yard** for the same persistent Build/Cancel flow as stations.
+8. **Save** stores the project in this browser. **Load** explicitly restores it. **New project** clears the working project but leaves the saved version intact until Save is used again.
+
+**Network** opens a searchable project inventory of stations, yards, connection status, capacity and city-pair service opportunities. It also exposes a deterministic demo network. Population is an opt-in planning layer with adjustable intensity; built, draft and invalid infrastructure have distinct map treatments. Station access is labelled **potential reach**, while the network overview keeps its explicit city-pair daily-demand estimate separate and lets planned frequency change that estimate. The €750m demonstration budget is an objective, not an account balance or operating-income simulation.
 
 Committed acquisition footprints are marked as cleared sites. Their buildings are no longer charged or included in later conflict previews. Station upgrades remain visible as green footprints. Layer switches control available ROW, building footprints, and station-area roads; conflicts always remain visible.
 
@@ -74,12 +77,13 @@ Data: [OpenStreetMap contributors, ODbL 1.0](https://www.openstreetmap.org/copyr
 - `src/construction.ts`: section replacement, clipping, expansion validity, effective track counts.
 - `src/geometry.ts`: track envelopes, station footprints, building intersections, road constraints.
 - `src/cost.ts`: railway and property costs.
+- `src/depots.ts`, `src/YardPanel.tsx`: editable yard polygons, connected track layouts, and acquisition previews.
 - `src/persistence.ts`: local save/load.
 - `src/App.tsx`, `src/styles.css`: editor state and UI.
 
 ## Verification
 
-`npm test` covers section splitting, downgrades, expansion continuity, clipping/deletion, widening/narrowing building impacts, acquisition exclusion, station constraints in both axes, and cost/level calculations. `npm run build` checks TypeScript and the production bundle. Browser checks cover construction, a passing section, save/load, map themes, and station property/road previews.
+`npm test` covers section splitting, downgrades, expansion continuity, clipping/deletion, curved and concave yard layouts, place-based naming, demand estimation, deterministic demo generation, station constraints, and cost calculations. `npm run build` checks TypeScript and the production bundle. `npm run test:e2e` runs Playwright flows at desktop and narrow widths for demo restore, yard edit/cancel, light/dark controls, planning-layer defaults, network inventory and offline status.
 
 ## September railway review
 
@@ -87,7 +91,7 @@ See [the review and catchment research](reports/railway-review.md) for width ass
 
 ## Population and station catchment display
 
-The population layer bundles all 115,118 published cells from SCB's `stat:befolkning_1km_2025` WFS layer (reference date 2025-12-31). Original 1 km SWEREF99TM square geometry is transformed by SCB to WGS84; it is not replaced with degree-aligned boxes. Tiles load by viewport from zoom 7; cell totals label from zoom 10 and appear in click popups. Missing/unpublished cells are not represented as zero. Use the published `beftotalt` value: disclosure protection means subgroup totals need not add up. Source: [SCB population grids](https://www.scb.se/vara-tjanster/oppna-data/oppna-geodata/statistik-pa-rutor/), CC0. OSM stop data is attributed to OpenStreetMap contributors, ODbL 1.0.
+The population layer bundles all 115,118 published cells from SCB's `stat:befolkning_1km_2025` WFS layer (reference date 2025-12-31). Original 1 km SWEREF99TM square geometry is transformed by SCB to WGS84; it is not replaced with degree-aligned boxes. Tiles load by viewport from zoom 7; cell totals label from zoom 10. Clicking a population or catchment cell does nothing; railway and station selection continue to work. Missing/unpublished cells are not represented as zero. Use the published `beftotalt` value: disclosure protection means subgroup totals need not add up. Source: [SCB population grids](https://www.scb.se/vara-tjanster/oppna-data/oppna-geodata/statistik-pa-rutor/), CC0. OSM stop data is attributed to OpenStreetMap contributors, ODbL 1.0.
 
 Select or preview a fictional station for its catchment. Only stations built in the project (plus the active preview) compete; reference OSM railway stations are not treated as constructed game stations. The population and catchment displays never alter costs, construction, saves, routes, or operations.
 
@@ -106,3 +110,9 @@ Refresh these display datasets independently with `node scripts/fetch-catchment.
 
 
 The bundled stop layer currently contains 98,153 OSM stop/platform objects with Sweden-wide extract coverage, imported from `sweden-260919.osm.pbf`. An absent or nearby stop still must not be interpreted as absent or connected service. The online catchment importer remains available for later refreshes, but an incomplete Overpass run can produce a partial layer; `node scripts/fetch-catchment.mjs --cached-stops` only repackages the available stop caches. There is no runtime dependency on Overpass.
+
+## Route preparation performance
+
+Junction discovery projects onto nearby indexed segments with cached cumulative distances, rather than repeatedly scanning entire railway corridors. The junction cache is prepared during network loading so the first interaction can reuse it. On the bundled Sweden network, a cold Skovde-to-Nassjo route calculation dropped from 8,217 ms to 341 ms on the development machine (about 24 times faster); a cached calculation took 5 ms. Both calculations returned the same 142,810.552 m route. These are local timings, not a hardware-independent guarantee.
+
+The September 20 product opportunities review is in [reports/product-proof-of-concept-review.md](reports/product-proof-of-concept-review.md). Opportunities 4–8 are implemented in the current proof of concept; opportunities 1–3 remain future work.
