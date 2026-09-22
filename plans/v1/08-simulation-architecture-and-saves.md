@@ -243,7 +243,7 @@ Architecture is mostly invisible, but some of it is not:
 - **Fleet and depots (04):** owned trains, distance accumulation and servicing, all persisted; the derived-versus-cached depot figures question, resolved here in favour of deriving, because depot capacity recomputes invisibly from the drawn outline.
 - **Passengers and demand (05):** traveller sampling and itinerary search as the dominant runtime cost; travellers persisted with the rest of the session rather than resampled; the one-person-versus-weighted question resolved here, with weighted travellers splitting on partial boarding.
 - **Economy and progression (06):** ledger and statement derivation; the version gate that refuses pre-SEK saves as the first migration boundary.
-- **Interface and player experience (07):** presentation of pending validation, effective simulation rate, undo, and save failures. This plan sets what must be communicated, not how.
+- **Interface and player experience (07):** now written. All four surface in one persistent bottom-bar status region, alongside the time controls. Pending tier 2 validation is structurally unmistakable for clean because the state is always on screen. The clock keeps running while a workspace is open, so this plan's paused-only undo becomes a presentation obligation accepted there: the undo control is visibly unavailable while running rather than silently inert.
 - **First playable and validation (09):** the corridor scenario is the first performance target that must hold, and the vehicle for testing the worker boundary end to end.
 
 ## Acceptance scenarios

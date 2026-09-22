@@ -1,6 +1,6 @@
 # Handoff: icrail v1 planning set
 
-Written 2026-09-21, updated the same day after the audit repair pass. For the next agent picking up this work.
+Written 2026-09-21. Updated 2026-09-22 after plan 07. For the next agent picking up this work.
 
 ## What this is
 
@@ -19,7 +19,7 @@ Written 2026-09-21, updated the same day after the audit repair pass. For the ne
 | [04-fleet-and-depots.md](04-fleet-and-depots.md) | Complete |
 | [05-passengers-and-demand.md](05-passengers-and-demand.md) | Complete |
 | [06-economy-and-progression.md](06-economy-and-progression.md) | Complete |
-| `07-interface-and-player-experience.md` | Not written. Next once the audit repairs finish |
+| [07-interface-and-player-experience.md](07-interface-and-player-experience.md) | Complete |
 | [08-simulation-architecture-and-saves.md](08-simulation-architecture-and-saves.md) | Complete. Taken ahead of 07 deliberately, because it could have invalidated the others |
 | `09-first-playable-and-validation.md` | Not written — take last |
 
@@ -57,11 +57,20 @@ Two high findings were settled in the same pass: **travellers cost itineraries o
 
 **The 21 September audit is now fully resolved:** six blocking findings, six high, six consistency repairs.
 
-## Starting plan 07
+## Plan 07 is written — and it changed two other plans
 
-Read [07-NOTES-interface-grounding.md](07-NOTES-interface-grounding.md) first. It records what the prototype's interface actually is — one screen, seven construction tools, and a single contextual sidebar doing every kind of editing — and which of the things the other plans assume simply do not exist yet. It also flags that the map-as-primary-surface question is really a question about keeping 2,600 lines of existing component code rather than choosing on a blank page.
+[07-interface-and-player-experience.md](07-interface-and-player-experience.md) is complete. [07-NOTES-interface-grounding.md](07-NOTES-interface-grounding.md) is the grounding it was built on and is kept for reference.
 
-Its suggested first round is four questions, and the first looks load-bearing: whether one contextual sidebar can carry the whole game, since every other layout decision follows from the answer.
+What it settled: the map is the application, with a bottom bar opening four workspaces — Routes, Timetable, Fleet, Finance. A workspace is **as large as its work requires**: Routes is a sidebar because authoring a route means choosing stations on the map; the others cover the map because they do not need it. Construction stays a contextual sidebar and is not a workspace. The timetable is a table for authoring with a linked time-distance diagram for analysis, scoped to one corridor at a time. The map shows what is happening — population, infrastructure, live operation — and panels show what it means. Time controls and one persistent status region live in the bottom bar. Assistance is a before-and-after diff that never exposes signalling.
+
+**Two decisions there reach back into finished documents, and neither has been carried out yet. Do these before plan 09.**
+
+1. **The rename.** *Service* becomes **route**, *duty* becomes **schedule**, *published week* becomes **timetable**, across plans 02, 03, 04, 06 and 08 and the vision. The user chose to adopt their own vocabulary everywhere so the plans and the game speak one language. Mechanical and low-risk — the same shape as the agent-to-traveller rename — but large, and `service` is a common word in these documents so the match must be done carefully rather than with a blind replace.
+2. **Plan 03's restructuring.** Its **pattern object dissolves**: the authored per-stop content moves to the route, and placing a route on the timetable is what generates trips. Plan 03's pattern section, data list, acceptance scenarios and open questions all need rewriting. This is structural, not mechanical, and it has a real consequence recorded in plan 07 — a corridor served both fast and slow now needs two routes rather than one route with two patterns.
+
+Plan 07 also adds a mechanism no other plan has: **assigning several trains to one schedule repeats the whole schedule at a time offset**, which is how regular intervals get authored. Editing the parent must re-flow its copies, and an edited copy detaches. Plan 03 will need to absorb that during the restructuring.
+
+**Onboarding was deferred out of v1**, against the recommendation. The user's call. The cost is recorded in plan 07 rather than softened: four workspaces, a timetable editor and a time-distance diagram are not discoverable without one. It must be revisited before any public release.
 
 The “agent” to “traveller” rename is **done** — 93 occurrences across 00, 01, 05 and 08. This file's “next agent” reference means an AI agent and was deliberately left alone.
 

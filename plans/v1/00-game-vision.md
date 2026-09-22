@@ -29,6 +29,18 @@ The core gameplay loop is:
 - Handle signalling automatically. Players do not configure signals, blocks, junction routing, or advanced dispatching.
 - Let players select service paths and passing arrangements through understandable map and timetable controls.
 
+Settled in the [interface and player experience plan](07-interface-and-player-experience.md):
+
+- The map is the application. A bottom bar opens four workspaces — Routes, Timetable, Fleet and Finance — and a workspace is as large as its work requires: Routes is a sidebar because it uses the map, the others cover it because they do not. Construction stays a contextual sidebar and is not a workspace.
+- The player-facing vocabulary is canonical everywhere: **route**, **schedule**, **timetable**, replacing service, duty and published week.
+- Plan 03's pattern object dissolves. A route carries the authored per-stop content; placing a route on the timetable generates trips. A corridor served both fast and slow needs two routes.
+- Assigning several trains to one schedule repeats the whole schedule at a time offset, which is how regular intervals are authored.
+- The timetable is a table for authoring and a linked time-distance diagram for analysis, covering one route or corridor at a time.
+- The map shows what is happening — population, infrastructure, and live operation. Panels show what it means. Demand analysis is not painted on the map.
+- Time controls and one persistent status region sit in the bottom bar, carrying pending validation, named delay causes, publication reports and save failures.
+- Assistance is a before-and-after diff in operating terms, never exposing signalling, and never touching the draft until accepted.
+- **Onboarding is deferred out of v1**, against the recommendation, and must be revisited before any public release.
+
 Settled in the [infrastructure and operations plan](02-infrastructure-and-operations.md):
 
 - Train movement is a closed-form piecewise speed profile, giving one cheap technical minimum running time shared by timetable validation and live operation.
