@@ -168,6 +168,8 @@ Extracting this from [`App.tsx`](../../src/App.tsx) is a prerequisite rather tha
 
 Three named scenarios with explicit budgets, so the plans' cost questions have numbers rather than opinions. Sizes and budgets are **proposed** and need validating against a real implementation.
 
+The three scenarios describe **how much railway the player has built and is operating**, not how much map is loaded. The map is national from the first milestone in every case, as [plan 09](09-first-playable-and-validation.md) records — so the corridor scenario is a small simulation on the full Swedish dataset, and the load and memory figures below already carry that dataset.
+
 The 21 September audit found the targets unfalsifiable as originally written, and it was right: a per-step budget means nothing without a step size, and a rate means nothing without hardware. Both are now required. A **step size in simulated seconds** must be stated with the table, and every figure below is a claim about a **named reference machine and browser**, measured at **p95 over repeated runs** rather than from a single timing. The audit's worked example stands as the reason: at a one-second step, 60× requires sixty steps per wall-second, which leaves under 16.7 ms each before any other work — so a 25 ms step budget and a 60× rate target cannot both hold, and the table must be read as a set of claims that constrain each other.
 
 | | Corridor | Regional | National |

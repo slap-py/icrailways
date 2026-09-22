@@ -28,6 +28,16 @@ This is one milestone earlier than the audit implied and earlier than the recomm
 
 The accepted cost is narrower than it first appears but is still real. Without the ledger there is no cost side, so a player can compare revenue between weeks but cannot yet tell whether a route is worth running. Milestone 4 remains necessary; it is simply not the first playable.
 
+### The whole of Sweden, from the start
+
+**The player has the entire national dataset available from the first milestone.** The map is never clipped to a region, and there is no tutorial area, starter province, or progressive unlocking of geography. A player may build anywhere in Sweden on day one.
+
+This is not a new requirement so much as the existing state of the application, made explicit because the corridor scenario below could be misread as a restriction. [`region.json`](../../region.json) already covers Sweden at `[10.5, 55.0, 24.5, 69.2]`, and the bundled snapshot is national: a 32 MB rail network, 8 MB of places, 7 MB of transit stops, and population tiled across roughly a hundred and ten files.
+
+**Map extent and simulation scale are different things, and only the second is staged.** Plan 08's three performance scenarios — corridor, regional, national — measure simulated entities: trains, trips, travellers, occupancy. They say nothing about how much map is loaded. A player at milestone 3 with four stations and two routes is running a corridor-scale *simulation* on a national *map*, and that is the intended combination.
+
+One consequence is worth stating plainly, because it makes milestone 0's scale probe less hypothetical than it sounds: **the load-time and memory baseline is already national.** Whatever milestone 0 measures, it measures with the full dataset present, which is the honest starting point rather than a small case that will later be scaled up.
+
 ### The corridor scenario
 
 The shape is settled; every figure below is **proposed and indicative** and must not be treated as data.
@@ -87,7 +97,7 @@ One rule constrains the extraction throughout: **game rules must not be duplicat
 ### Three fixtures, for three different jobs
 
 - **A tiny synthetic graph**, for precise invariants — separation, reservations, capacity, unit identity, money conservation, determinism. Small enough that a failure points at a line.
-- **The curated Swedish corridor**, for real map integration and playtesting. This is the scenario above.
+- **The curated Swedish corridor**, for real map integration and playtesting. This is the scenario above. It is a **saved project on the national map**, not a reduced dataset — a fixture describing what has been built, against geography that is always fully present.
 - **Generated regional and national workloads**, for scale.
 
 Real geography alone is a poor diagnostic fixture: when something goes wrong in it, the cause is buried in data. The synthetic graph exists so that correctness is testable separately from realism.
@@ -127,7 +137,7 @@ This plan adds no new data of its own. It requires, from the plans that own them
 
 ## Open questions
 
-- **Which corridor.** A real Swedish corridor must be chosen for the curated fixture, with a single-track section and somewhere a loop can plausibly go. Not settled, and it should be chosen from the OSM data rather than in the abstract.
+- **Which corridor.** Deferred rather than open: the map is national from the start, so this is a question of where the fixture happens to be built, not of what data exists. It needs a single-track section and somewhere a loop plausibly goes, and it can be chosen when the fixture is written.
 - **The reference machine.** Plan 08's targets are claims about hardware that has not been named.
 - **Scenario figures.** Every number in the corridor table.
 - **Milestone 0's extraction boundary.** Exactly which parts of `App.tsx` the worker protocol needs, which cannot be answered precisely until the contracts are written.
@@ -167,7 +177,8 @@ This plan depends on all of them and settles none of their rules.
 ## Deferred features and planning boundaries
 
 - No milestone may be declared done on the basis of code existing. Each has exit evidence, and the evidence is the definition.
-- No work on regional or national content before milestone 3 is demonstrable, other than the synthetic scale probe in milestone 0.
+- No work on regional or national *content* before milestone 3 is demonstrable, other than the synthetic scale probe in milestone 0. This does not restrict the map, which is national throughout — what is staged is the size of the simulation, not the extent of the geography.
+- No clipping of the dataset to a region, no starter area, and no progressive unlocking of geography.
 - No full restructure of `App.tsx` as a project in its own right.
 - No tenth planning document. The contracts are code.
 - No onboarding, per plan 07.
