@@ -2,7 +2,7 @@
 
 Written 2026-09-21. Updated 2026-09-22, when the planning set was completed. For the next agent picking up this work.
 
-**Planning is done. The next work is implementation.** Start at [09-first-playable-and-validation.md](09-first-playable-and-validation.md), milestone 0.
+**Planning is done. The next work is implementation.** If you are starting that, read [IMPLEMENTATION.md](IMPLEMENTATION.md) first — it is the brief for it. This file covers how the planning set was built and why; that one covers what to build and how to work.
 
 ## What this is
 
