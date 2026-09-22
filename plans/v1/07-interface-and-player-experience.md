@@ -242,11 +242,11 @@ One small inherited oddity worth fixing deliberately rather than inheriting: the
 - No theming, customisation, or user-configurable keyboard bindings in v1.
 - No in-operation dispatching controls of any kind, per plan 03's boundary.
 
-## Required follow-up
+## Required follow-up, now carried out
 
-Two changes agreed here reach into documents that were already complete, and neither is optional:
+Two changes agreed here reached into documents that were already complete. **Both were carried out on 22 September**, immediately after this plan was written.
 
-1. **The rename.** Service becomes route, duty becomes schedule, published week becomes timetable, across plans 02, 03, 04, 06 and 08 and the vision. Mechanical and low-risk, in the same shape as the agent-to-traveller rename, but large.
-2. **Pattern's dissolution.** Plan 03's pattern section, its data list, its acceptance scenarios and its open questions all need rewriting around routes carrying authored content and timetables generating trips. This is structural rather than mechanical and should be done carefully.
+1. **The rename.** Service became route, duty became schedule, and the published and draft weeks became timetables, across plans 02 to 08 and the vision — 232 occurrences. Plan 03 is now [03-routes-and-timetabling.md](03-routes-and-timetabling.md). The rename is deliberately partial: eighty uses of “service” carry unrelated meanings and were left alone — public service contracts, service level, service interval, service duration, service brake, service-due and the servicing verb — as were about twenty where it is ordinary English for a train a passenger can catch. A route is the line; a service is a train running on it.
+2. **Pattern's dissolution.** Plan 03's pattern section, data list, acceptance scenarios and open questions are rewritten around routes carrying the authored content and timetables generating trips. The offset-schedule mechanism this plan introduced is absorbed there too.
 
-This document records the determinations reached so far and does not authorize application changes. Carry out the rename and plan 03's restructuring, settle where demand diagnostics live in sandbox, and resolve the shift's remaining figures before treating it as implementation-ready.
+This document records the determinations reached so far and does not authorize application changes. Settle where demand diagnostics live in sandbox and resolve the shift's remaining figures before treating it as implementation-ready.

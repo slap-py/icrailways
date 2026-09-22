@@ -1,6 +1,6 @@
 # V1 routes and timetabling
 
-Status: agreed direction from the routes and timetabling planning discussion, not an implementation specification. Editor detail, numerical rules, and several operational behaviours remain open.
+Status: agreed direction from the routes and timetabling planning discussion, not an implementation specification. Restructured on 22 September after [plan 07](07-interface-and-player-experience.md): the **pattern** object no longer exists, its authored content having moved to the route and its generating job to the timetable, and the player-facing vocabulary is now route, schedule and timetable. Editor detail, numerical rules, and several operational behaviours remain open.
 
 This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), and the [infrastructure and operations plan](02-infrastructure-and-operations.md). It separates confirmed choices from questions that still need decisions.
 
@@ -36,11 +36,12 @@ This removes the need for separate routes per direction and gives short workings
 
 ### Authoring by running times, not clock times
 
-Players do not type an arrival time for every station. They author, per pattern:
+Players do not type an arrival time for every station. They author, **on the route**:
 
 - the **call type** at each route stop: stop, pass, or hold;
 - the **dwell** at each stopping station;
-- the **running-time allowance** for each section between consecutive route stops.
+- the **running-time allowance** for each section between consecutive route stops;
+- the **layover** at each end of the route, before it works back the other way.
 
 The game derives a technical minimum running time per section from infrastructure speed, train performance, and connection limits (plans 02 and 04). Where the authored allowance exceeds that minimum, the difference is the player's recovery margin and is shown as such. An allowance below the minimum is not rejected; it is flagged immediately with the minimum and its cause, consistent with plan 02's rule that imperfect timetables may run. At runtime the train cannot beat its technical minimum, so the shortfall simply becomes delay. Clock times at every station are computed from the trip's departure time plus dwells and allowances, and are displayed for inspection and for individual override.
 
@@ -50,19 +51,32 @@ The vision's "slowing on passing tracks" is not a fourth call type. A slow run t
 
 Whether the game pre-fills allowances with the technical minimum, a padded default, or nothing is an open question.
 
-### Patterns generate trips; edited trips detach
+### The route holds the times; the timetable generates the trips
 
-A **pattern** is a reference trip: direction, start and end stop, call types, dwells, and allowances. The player applies a pattern to produce departures across the week, by time band and day, which materialise as concrete **trips**.
+This plan originally had a third object between the two. A **pattern** was a reference trip — direction, start and end stop, call types, dwells and allowances — which the player applied across the week to materialise concrete trips. [Plan 07](07-interface-and-player-experience.md) **dissolves it**, and this section records what replaces it.
 
-Generated trips keep a live link to their pattern. Editing the pattern's call types, dwells, or allowances re-flows every still-linked trip. Editing a trip directly detaches it: it keeps its own values and is no longer changed by the pattern. Detached trips are marked, and the player can re-link a trip to discard its overrides.
+- The **route** carries the authored per-stop content: call types, dwells, running-time allowances, and layovers. This is the material that used to live on a pattern.
+- **Placing a route on the timetable** at a day and time, with a direction and optionally a sub-range, is what produces a concrete **trip**.
 
-This satisfies manual authorship while keeping a half-hourly route to a handful of authored objects rather than forty hand-written timetables.
+Generated trips keep a live link to the route they came from. Editing the route's call types, dwells or allowances re-flows every still-linked trip. Editing a trip directly detaches the whole trip: it keeps its own values and is no longer changed by the route. Detached trips are marked, and the player can re-link a trip to discard its overrides. Only the object being detached *from* has changed; the rule itself is untouched, including its settled whole-trip granularity.
+
+This still satisfies manual authorship while keeping a half-hourly route to a handful of authored objects rather than forty hand-written timetables — the reuse simply comes from the route rather than from a pattern beneath it.
+
+**The accepted cost is that one route carries one set of times.** A corridor served both fast and slow needs **two routes** rather than one route with two patterns. This is arguably clearer, since a regional and an express are different things to a player and plan 09's proposed first-playable corridor already pairs exactly those two — but it is a real reduction in what this plan previously allowed, and it is recorded as a loss rather than a simplification. **The intended extension**, if express-and-stopping on one corridor proves painful to author, is named variants beneath a route carrying their own call types and allowances. It is not pre-built.
+
+### Several trains on one schedule shift in time
+
+Assigning more than one train to a schedule **repeats the whole schedule, offset in time**. Four trains at a thirty-minute offset on a two-hour round trip produce a clean half-hourly service from one authored object.
+
+This mechanism arrives from plan 07 and did not exist in this plan before. It is a different relationship from the trip generation above: that generates trips from a route, this generates schedules from a schedule. It is how regular intervals are authored without writing out each train's day separately.
+
+Two requirements follow. Editing the parent schedule **re-flows its offset copies**, in the same spirit as the route-to-trip link. And the detachment rule **extends to an edited copy**, which detaches from its parent and keeps its own values. The offset's granularity, and whether a copy may be individually retimed without fully detaching, are open below.
 
 ### A flat week of seven explicit days
 
 The published timetable is a flat list of seven days, each holding concrete trips. There are no day-type templates in the stored timetable: Tuesday and Wednesday are separate days that happen to contain similar trips.
 
-Weekday, weekend, rush-hour, and off-peak differences are expressed by generating different departures into different days, not by a day-type abstraction. Patterns supply the reuse; the week itself stays explicit and directly editable.
+Weekday, weekend, rush-hour, and off-peak differences are expressed by placing routes differently across days, not by a day-type abstraction. The route supplies the reuse; the week itself stays explicit and directly editable.
 
 Copying a day's trips to other days is an editor convenience and must be available, but it produces independent trips rather than a persistent link between days.
 
@@ -131,7 +145,7 @@ Structural invalidity is different: a trip over a broken route, or a schedule wh
 
 The optional easier assistance mode proposes concrete, reviewable edits: move this meet to that loop, add two minutes of dwell here, shift this departure by four minutes, split this schedule. Each suggestion is presented as a diff the player accepts or rejects.
 
-Assistance never edits the draft on its own, never publishes, and never generates a timetable. Accepting a suggestion is an ordinary player edit and detaches trips from their pattern in the normal way.
+Assistance never edits the draft on its own, never publishes, and never generates a timetable. Accepting a suggestion is an ordinary player edit and detaches trips from their route in the normal way.
 
 ## Existing functionality and gaps
 
@@ -144,11 +158,11 @@ Nothing in the current save format anticipates timetable state. Route selection 
 ## Player workflow
 
 1. Create a route, name it, and pick its route stations on the map.
-2. Author a pattern: direction, start and end stop, call types, dwells, and running-time allowances against the shown technical minimums.
-3. Generate departures from the pattern into the days and time bands of the draft timetable.
-4. Inspect and override individual trips where needed, accepting that an edited trip detaches from its pattern.
+2. Author the route's times: call types, dwells, running-time allowances against the shown technical minimums, and layovers at each end.
+3. Place the route into the days and time bands of the draft timetable, with a direction and any sub-range, generating trips.
+4. Inspect and override individual trips where needed, accepting that an edited trip detaches from its route.
 5. Create explicit meets and overtakes where trips interact, and pin platforms where they matter.
-6. Chain trips into schedules and review the reported fleet requirement and turnaround feasibility.
+6. Chain trips into schedules, assign more than one train with an offset where a regular interval is wanted, and review the reported fleet requirement and turnaround feasibility.
 7. Read continuous conflict markers as the draft is edited, optionally reviewing and accepting assistance suggestions.
 8. Publish the draft, accepting any remaining timing conflicts, and observe the operated week against the plan.
 9. Return to the draft to improve the timetable, or pause and rebuild infrastructure, then repair flagged routes before their next departure.
@@ -159,11 +173,10 @@ The editor's actual form — timetable table, graphical time-distance diagram, m
 
 Planning needs implied by the agreed behaviour, not settled schemas:
 
-- **Route:** identity, name, ordered route of stations, and validity against current infrastructure.
-- **Pattern:** direction, start and end stop, per-stop call type and dwell, per-section running-time allowance, and the generation rules that produced trips from it.
-- **Trip:** owning route and pattern, departure day and time, start and end stop, resolved per-station times permitting values beyond 24:00, link-or-detached state, pinned platforms, and blocked/flagged status.
+- **Route:** identity, name, ordered stations, per-stop call type and dwell, per-section running-time allowance, layover at each end, and validity against current infrastructure. It carries what a pattern used to hold.
+- **Trip:** owning route, departure day and time, start and end stop, resolved per-station times permitting values beyond 24:00, link-or-detached state, pinned platforms, and blocked/flagged status.
 - **Passing arrangement:** the two trips, the location, which trip waits, and validation state.
-- **Schedule:** ordered trips, with turnaround and empty-movement requirements resolved against plan 04, and a reference to the physical train assigned to work it. This plan owns the chain's shape; plan 04 owns the assigned train and validates that the assignment is physically possible.
+- **Schedule:** ordered trips, with turnaround and empty-movement requirements resolved against plan 04, and a reference to the physical train assigned to work it. Where several trains work one schedule, also the parent schedule, the time offset, and the detached state of a copy. This plan owns the chain's shape; plan 04 owns the assigned train and validates that the assignment is physically possible.
 - **Timetable:** separate draft and published timetables, with an activation operation and a record of what publication reported.
 - **Departure identity:** trip plus week occurrence, sufficient to tell a departure already made from one still due, and to mark one skipped on publication.
 - **Publication report:** timing conflicts, broken routes, orphaned passing arrangements, skipped departures, and fleet conflicts against live train positions — reported, never blocking.
@@ -176,7 +189,7 @@ Persistence, derived-state boundaries, incremental validation architecture, and 
 
 ## Open questions
 
-- **Route editing:** how stations are added, reordered, and removed on the map; what happens to patterns, trips, arrangements, and schedules when a route changes mid-draft.
+- **Route editing:** how stations are added, reordered, and removed on the map; what happens to the route's own call types, dwells and allowances, and to its trips, arrangements and schedules, when a route changes mid-draft. Dissolving the pattern sharpens this: the authored times now live on the object being edited rather than on a layer beneath it.
 - **Allowance defaults:** whether the game pre-fills running-time allowances with the technical minimum, a padded value, or nothing, and how the minimum is shown when infrastructure or train type changes it.
 - **Hold and pass calls:** exactly what a hold or a pass at a non-platform track means in authored time, and how it differs from a dwell.
 - **Generation controls:** how the player expresses time bands and frequencies when generating departures into a day, without that becoming a stored day-type abstraction.
@@ -205,8 +218,11 @@ Numerical expectations must be added once the open questions are resolved.
 | Scenario | Expected behaviour |
 | --- | --- |
 | Player creates a route and picks route stations | One bidirectional route exists with an ordered route validated against constructed track. |
-| Player authors a pattern and generates half-hourly departures | Trips appear across the chosen days with derived station times, all linked to the pattern. |
-| Player increases a section's running-time allowance on the pattern | Every still-linked trip re-flows; previously detached trips are unchanged. |
+| Player places a route into the timetable at half-hourly intervals | Trips appear across the chosen days with derived station times, all linked to the route. |
+| Player increases a section's running-time allowance on the route | Every still-linked trip re-flows; previously detached trips are unchanged. |
+| Player wants the same corridor served fast and slow | Two routes are authored. One route carries one set of call types, dwells and allowances. |
+| Player assigns four trains to one schedule at a thirty-minute offset | Four offset copies of the whole schedule exist, and editing the parent re-flows them. |
+| Player edits one offset copy directly | It detaches from its parent, keeps its own values, and is marked as detached. |
 | Player edits one trip's dwell directly | That trip detaches, is marked as such, and can be re-linked to discard the override. |
 | Player sets an allowance below the technical minimum | The edit is flagged immediately with the minimum and its cause shown. |
 | A trip runs only part of the route, backwards | It is an ordinary trip with a start and end stop, needing no separate route. |
@@ -227,7 +243,8 @@ Numerical expectations must be added once the open questions are resolved.
 ## Deferred features and planning boundaries
 
 - No automatic timetable generation, and no assistance that edits or publishes a timetable by itself.
-- No day-type templates in the stored week; patterns provide reuse instead.
+- No day-type templates in the stored week; the route provides reuse instead.
+- No pattern object, and no third layer between a route and a trip. Named variants beneath a route are the intended extension if one proves necessary, and are not v1.
 - No player-configured signalling, blocks, junction routing, or dispatching, and no manual assignment of intermediate tracks.
 - No automatic relocation of planned meets or overtakes to recover from delays.
 - No automatic fleet assignment; schedules are chained by the player, with automation a later possibility per the vision.

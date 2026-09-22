@@ -156,7 +156,7 @@ The minimum split, named rather than specified:
 | --- | --- |
 | Worker: infrastructure | Operational track graph, connections, usable lengths, occupancy, reservations |
 | Worker: operations | Clock, train positions, movement, separation, delays, named blockers |
-| Worker: timetable | Draft and published timetables, patterns, trips, arrangements, schedules, validation |
+| Worker: timetable | Draft and published timetables, routes, trips, arrangements, schedules, validation |
 | Worker: fleet | Train catalogue, owned trains, stabling, distance accumulation, servicing |
 | Worker: demand | Traveller sampling, itinerary search, boarding, reliability records |
 | Worker: economy | Ledger, balance, loans, fares, contracts, statements |

@@ -56,7 +56,7 @@ Settled in the [routes and timetabling plan](03-routes-and-timetabling.md):
 
 - A route is bidirectional and owns one route; a trip may run any sub-range of that route in either direction, so short workings need no separate route.
 - Players author running-time allowances, dwells, and call types rather than typing clock times; times are derived, displayed, and individually overridable.
-- Patterns generate trips that stay linked to them; directly editing a trip detaches it. The stored week is seven explicit days.
+- A route carries its own call types, dwells, allowances and layovers; placing it on the timetable generates trips that stay linked to it, and directly editing a trip detaches the whole trip. A corridor served both fast and slow needs two routes. The stored week is seven explicit days.
 - An overnight trip belongs to its departure day and carries times past 24:00. The week wraps.
 - Meets and overtakes are explicit player-created objects, not inferred from times.
 - Platforms are assigned automatically, with optional player pins.
