@@ -1,6 +1,6 @@
 # V1 fleet and depots
 
-Status: agreed direction from the fleet and depots planning discussion, not an implementation specification. The catalogue shape, storage model, turnaround model, servicing trigger, empty-movement ownership, and duty assignment are settled in kind. The numerical catalogue is proposed and must be verified and balanced before implementation.
+Status: agreed direction from the fleet and depots planning discussion, not an implementation specification. The catalogue shape, storage model, turnaround model, servicing trigger, empty-movement ownership, and duty assignment are settled in kind. Siding capacity and the servicing-only empty movement were settled on 21 September, resolving two findings of that day's audit. The numerical catalogue is proposed and must be verified and balanced before implementation.
 
 This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), the [infrastructure and operations plan](02-infrastructure-and-operations.md), and the [services and timetabling plan](03-services-and-timetabling.md).
 
@@ -89,7 +89,9 @@ Where no valid empty movement exists — no path, an unwired route for an electr
 
 ### Depots are pools of individual sidings
 
-A depot is operationally a set of **sidings**, each with a usable length. A train stables by occupying one siding it fits within, entirely.
+A depot is operationally a set of **sidings**, each with a usable length. A siding holds **any number of trains whose combined length fits within its usable length**, which is how a real stub siding works and what makes the length of a drawn yard matter rather than only its width.
+
+This resolves a contradiction the 21 September audit found: this plan previously said a train occupied one siding entirely, while its own acceptance table already had two trains stabled on one siding. The acceptance table was right.
 
 This follows plan 02's treatment of stations: no throat, no switch geometry, no conflict between simultaneous entry and exit. It also matches what the prototype already derives. [`depotMetrics`](../../src/depots.ts) computes a siding count from the outline width at fixed 6 m spacing with 4 m side clearance, and a usable length from the body length less 4 m. Those derived figures become the real operational resource, so the yard the player draws is the capacity they get.
 
@@ -117,7 +119,11 @@ Distance rather than calendar days or running hours, because distance is what ma
 
 Servicing is a **scheduling problem, not a failure mode**. A train does not break down and there is no reliability simulation. Plan 03's validation reports, over the published week, which trains reach their interval and whether their duty contains a stay long enough to service them.
 
-An overrun blocks that train's **next departure** until it is serviced, and does not interrupt a trip already underway. This follows plan 02's distinction exactly: a future departure may be blocked because the player has until then to fix it, a trip underway may not because there is no point at which they could have.
+An overrun blocks that train's **next revenue departure** until it is serviced, and does not interrupt a trip already underway. This follows plan 02's distinction exactly: a future departure may be blocked because the player has until then to fix it, a trip underway may not because there is no point at which they could have.
+
+**One exception: an overrun train may still make an empty movement to a depot that can service it, and nothing else.** Without it a train that comes due far from any depot is stranded, because the run to the depot is itself a departure — which the audit identified. The empty run accrues distance like any other movement, and that further overrun does not re-trigger the block against the movement already under way.
+
+The exception is an escape hatch, not the intended path. Plan 03's validation reports over the published week which trains reach their interval and where, so a player who reads the warning schedules the visit into the duty and never needs it.
 
 Servicing occupies a siding for its whole duration, so a yard with just enough sidings to stable the fleet overnight does not necessarily have enough to service it.
 
@@ -179,7 +185,7 @@ Planning needs implied by the agreed behaviour, not settled schemas:
 - **Train type:** identity, display name, role, traction, car count, length, maximum speed, acceleration, service braking rate, seated capacity and berths, maximum coupled units, minimum reversal time, service interval, and service duration. Static catalogue content, not player-editable.
 - **Train:** identity, type, accumulated distance since last service, current location, and stabled siding. Individually identifiable.
 - **Coupling:** the units forming one train for one duty, constrained to a single type and the type's maximum.
-- **Depot:** an electrification flag, and operational sidings each with a usable length, derived from the existing footprint geometry rather than newly authored.
+- **Depot:** an electrification flag, and operational sidings each with a usable length, derived from the existing footprint geometry rather than newly authored. Occupancy is the combined length of the trains on a siding against that usable length.
 - **Depot access:** a usable operational path with a speed limit, resolved from the existing approximate connection.
 - **Duty:** a train reference, added to plan 03's record, with the ownership split named in both documents.
 - **Empty movement:** owning duty, endpoints, derived times, adjustability within its gap, and the occupancy it holds.
@@ -199,7 +205,7 @@ Persistence, the authority of derived over cached depot figures, and save migrat
 - **Servicing values:** the interval and duration per type, and whether one interval per type is enough or servicing needs light and heavy kinds.
 - **Servicing location:** whether any depot can service any type, or whether servicing capability is a depot property the player builds and pays for.
 - **Depot access speed:** the speed limit over a depot connection, and how it differs from a running line for plan 02's separation and reservation purposes. Plan 02 lists this as open and it remains open; this plan only establishes that the connection must resolve to a real path.
-- **Stabling assignment:** whether the player assigns a train to a specific siding or the game packs them, and if the game packs them, how stable that packing is between validations.
+- **Stabling assignment:** whether the player assigns a train to a specific siding or the game packs them, and if the game packs them, how stable that packing is between validations. Capacity by combined length makes this a packing problem rather than a count, which sharpens the question — an unstable packing would make depot capacity appear to fluctuate between validations.
 - **Through-depot use:** whether a depot's second exit makes it usable as a through route, and whether an empty movement may pass through a yard rather than terminating in it.
 - **Fleet requirement reporting:** how an unassigned duty's requirement is expressed — a type, a capability, or a capacity — before any train exists to satisfy it.
 - **Coupling granularity:** whether coupling is truly fixed for a whole duty, or whether a peak-only strengthening duty is common enough to need mid-duty joining sooner than deferral assumes.
@@ -209,7 +215,7 @@ Persistence, the authority of derived over cached depot figures, and save migrat
 - **Infrastructure and operations (02):** consumes this plan's length, performance, and traction for movement, separation, and electrification; supplies running times, occupancy, holding lengths, and the blocked-departure rule this plan follows for service overruns. Plan 02's separation formulae take this plan's braking rates as input.
 - **Services and timetabling (03):** supplies duty shape, turnaround gaps, and the published week; consumes this plan's reversal minimum, length, traction, and capacity, and gains a train reference on its Duty record. Publication there now checks newly published duties against where trains actually are, so a duty demanding a unit still working an old trip is reported at publication and, if published anyway, held at runtime with the blocking train named. The validation is this plan's; the reporting moment is 03's.
 - **Passengers and demand (05):** now written. It consumes seated capacity, berths, and coupled-unit capacity as a hard boarding limit, so a train too short for its demand denies boarding rather than absorbing it. Whether a type also needs a crush capacity above its seat count is open there.
-- **Economy and progression (06):** now written. It prices the purchase, standing, and per-kilometre categories this plan identified, charges depot construction for its sidings as well as its land, and funds the fleet through bounded borrowing. Whether per-kilometre running cost differs by type is open there.
+- **Economy and progression (06):** now written, and revised on 21 September. It prices the purchase, standing, and per-kilometre categories this plan identified, and charges depot construction for its sidings as well as its land. Bounded borrowing was removed there, so nothing limits the purchase of a train except the player's willingness to carry debt. Whether per-kilometre running cost differs by type is open there.
 - **Interface and player experience (07):** the catalogue browser, fleet and depot panels, duty assignment presentation, and how a named assignment failure is shown.
 - **Simulation architecture and saves (08):** now written, and revised after the 21 September audit. Train state and distance accumulation live in the worker and are persisted with the rest of the session, so accumulated mileage and servicing progress survive a reload rather than being reconstructed. The derived-versus-cached depot figures question is resolved there in favour of deriving, because depot capacity recomputes from the drawn outline invisibly — which is the test that plan now applies to everything it declines to persist.
 - **First playable and validation (09):** the corridor scenario needs at least a regional and an intercity type, one depot, and duties that exercise turnaround, stabling, and a servicing visit.
@@ -233,6 +239,8 @@ Numerical expectations must be added once the catalogue figures are verified and
 | Player retimes a trip so a derived empty movement no longer fits its gap | The chain is re-validated and flagged; the empty movement is not silently shortened below its technical minimum. |
 | A yard is drawn with a given footprint | The usable siding count and length are derived from the footprint and shown alongside it, and are the capacity actually available. |
 | Two trains stable on one stub siding and the inner one is needed first | It leaves; stabling order is not modelled. |
+| A siding's usable length is 200 m and two 90 m units are stabled on it | Both fit, and 20 m remains. Capacity is by combined length, not by train count. |
+| A train comes due for service at a station with no depot | It may run empty to a depot that can service it. Every other departure is blocked until it has been. |
 | More trains are assigned to a depot than it has sidings they fit within | Reported as a stabling shortfall against that depot, before publication. |
 | A train reaches its service interval mid-week with no long enough stay in its duty | Validation reports the overrun and the day it falls on; the player adds a servicing stay or re-chains. |
 | A train overruns its service interval during operation | Its next departure is blocked until serviced; a trip already underway completes. |

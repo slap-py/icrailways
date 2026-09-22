@@ -115,7 +115,7 @@ Depth is bounded, and the bound is a memory decision against the scenario sizes 
 Plan 03 agreed continuous incremental validation without a cost. It is tiered:
 
 - **Tier 1, immediate, on every edit, within a stated time budget.** Structurally local checks: running-time allowances below the technical minimum, duty continuity and turnaround, routes broken by infrastructure edits, pinned platforms that cannot be satisfied, electrification and length incompatibility, and fleet assignment feasibility. These depend on the edited object and its immediate neighbours, so their cost scales with the edit rather than the network.
-- **Tier 2, debounced or on explicit request.** Network-wide analysis: headway and separation conflicts between trips, track and platform occupancy across the whole week, and meets and overtakes made impractical by times.
+- **Tier 2, debounced or on explicit request.** Network-wide analysis: headway and separation conflicts between trips, track and platform occupancy across the whole week, and meets and overtakes made impractical by times. **Tier 2 runs as cancellable, bounded slices over versioned immutable inputs, never as one synchronous pass.** The audit's objection is decisive: the national budget below is fifteen seconds, and fifteen synchronous seconds in the worker that also owns the clock would stop the railway and stop command handling with it. A slice that finishes against a superseded revision is discarded rather than reported.
 - **Publication always forces a full pass.** Plan 03 requires publication to report structural invalidity clearly, so it may not rely on a debounced tier having run.
 
 The tiers must not disagree. A conflict tier 1 could have found must not be reported only by tier 2, or the player will trust an incomplete picture; the split is by scope of analysis, not by thoroughness within that scope.
@@ -166,6 +166,8 @@ Extracting this from [`App.tsx`](../../src/App.tsx) is a prerequisite rather tha
 
 Three named scenarios with explicit budgets, so the plans' cost questions have numbers rather than opinions. Sizes and budgets are **proposed** and need validating against a real implementation.
 
+The 21 September audit found the targets unfalsifiable as originally written, and it was right: a per-step budget means nothing without a step size, and a rate means nothing without hardware. Both are now required. A **step size in simulated seconds** must be stated with the table, and every figure below is a claim about a **named reference machine and browser**, measured at **p95 over repeated runs** rather than from a single timing. The audit's worked example stands as the reason: at a one-second step, 60× requires sixty steps per wall-second, which leaves under 16.7 ms each before any other work — so a 25 ms step budget and a 60× rate target cannot both hold, and the table must be read as a set of claims that constrain each other.
+
 | | Corridor | Regional | National |
 | --- | --- | --- | --- |
 | Route length | ~100 km | ~600 km | ~5,000 km |
@@ -181,7 +183,7 @@ Three named scenarios with explicit budgets, so the plans' cost questions have n
 | Tier 2 validation | < 500 ms | < 2 s | < 15 s |
 | Load, including derivation | < 1 s | < 3 s | < 10 s |
 
-The corridor scenario is plan 09's first playable and must hold first. The national scenario is the one that decides whether the agreed direction survives; if it cannot be met, plan 05's fallback to aggregate flows outside the served area is the first thing to reach for, before anything structural is reconsidered.
+The corridor scenario is plan 09's first playable and must hold first. The national scenario is the one that decides whether the agreed direction survives. Plan 05's aggregate-flow fallback is no longer what to reach for if it cannot be met — that fallback is withdrawn there, because travellers outside the served area never existed to be aggregated. What replaces it is measurement: budget served-area routing and traveller population separately, and measure caching and shared search before reconsidering anything structural.
 
 Targets belong in automated tests against fixture scenarios, alongside the existing 66 unit tests and the Playwright end-to-end suite, so a regression fails a build rather than being noticed later.
 
@@ -222,7 +224,7 @@ Architecture is mostly invisible, but some of it is not:
 
 - **Step size:** the fixed step in simulated seconds, and whether separation and moving-block following are stable at the largest step that meets the budgets.
 - **Snapshot design:** what a snapshot contains, how viewport scoping interacts with a time-distance diagram spanning a corridor, and whether transferable buffers are needed.
-- **Target validity:** every figure in the scenario table, and whether the national scenario is achievable at all with individual travellers.
+- **Target validity:** every figure in the scenario table, and whether the national scenario is achievable at all with individual travellers. The step size and the reference machine are now required inputs to that question rather than details — and, per the audit's arithmetic, the step budget and the fast-forward rate in each column must be checked against each other before either is trusted.
 - **Traveller budget:** the live traveller cap, how sampling weight is chosen and adjusted without demand appearing to jump, and the two figures the splitting rule requires — the merge condition and the minimum weight below which a traveller does not split.
 - **Tier 2 trigger:** debounce interval, whether it runs speculatively during idle time, and how a long pass is cancelled when the player edits again.
 - **Load-time derivation:** which values pass the visible-against-invisible test and may therefore be recomputed at all, whether recomputing catchments and validation on load fits the load budget, and what may be deferred until after the interface is interactive.
@@ -267,8 +269,10 @@ Architecture is mostly invisible, but some of it is not:
 | The traveller budget would be exceeded | Sampling reduces and weights scale so totals stay correct, with no path assuming a weight of one. |
 | A traveller weighted twenty meets a train with three seats free | It splits: three board, seventeen wait or abandon. Twenty people are still accounted for, and three denied boardings are not reported as twenty. |
 | Split travellers accumulate on a crowded platform | The merge rule recombines those sharing a destination, purpose and acceptable-service set, so the count stays bounded. |
-| The corridor scenario runs | Every budget in its column is met, asserted by an automated test. |
-| The national scenario misses a budget | The build fails, and plan 05's aggregate-flow fallback is the first response considered. |
+| The corridor scenario runs | Every budget in its column is met on the named reference machine at p95 over repeated runs, asserted by an automated test. |
+| A tier 2 pass is running and the player edits again | The pass is cancelled mid-slice, its partial result is discarded, and the simulation and command handling never stalled. |
+| A tier 2 result arrives against a superseded revision | It is discarded rather than reported, so no stale conflict is shown against current state. |
+| The national scenario misses a budget | The build fails, and the first response is measurement — routing against population, caching, shared search — rather than a change to the demand model. |
 
 ## Deferred features and planning boundaries
 

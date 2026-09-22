@@ -94,12 +94,12 @@ Settled in the [passengers and demand plan](05-passengers-and-demand.md):
 Settled in the [economy and progression plan](06-economy-and-progression.md):
 
 - SEK figures are established by recalibrating the existing cost model's constants against documented Swedish sources. Its shape is kept; no conversion rate is applied anywhere. Relabelling euros would have left construction roughly two orders of magnitude too cheap.
-- The player has a real account — opening capital, ticket revenue, recurring maintenance and operating costs, and borrowing bounded by recent revenue — replacing the prototype's cumulative spend total.
+- The player has a real account — opening capital, ticket revenue, and recurring maintenance and operating costs — replacing the prototype's cumulative spend total. The balance may go negative without limit; there is no separate loan mechanism.
 - The balance moves continuously and a statement closes each timetable week by category, so the accounting period matches the week the player authors.
-- Insolvency blocks new construction, purchases, and borrowing while operations continue. There is no game over.
+- Nothing is ever blocked for want of money, and debt carries no consequence of its own. There is no insolvency state and no game over. This replaces an earlier rule that insolvency blocked new commitments, removed on 21 September; it leaves the financially constrained management mode named above without a financial constraint, so the modes are redefined by what money means rather than by what it prevents — see below.
 - Fares are a national rate per passenger-kilometre set by the player, with a per-service modifier.
 - Progression comes from public service contracts: a corridor, a minimum service level, a term, and a subsidy the player is paid while meeting it.
-- Sandbox runs the same accounting in full and never constrains; contracts are opt-in.
+- The two modes differ in what money means, not in what it prevents. Management mode tracks a balance, debt, a weekly statement and contracts. Sandbox tracks no total at all — it keeps fares and profitability so a player can see whether a corridor would pay, and holds no balance and no contracts. Neither mode ever blocks. Revised 21 September, after removing the insolvency block left the modes indistinguishable.
 - Saves predating the SEK economy are refused rather than migrated.
 
 Settled in the [simulation architecture and saves plan](08-simulation-architecture-and-saves.md), as revised after the 21 September audit:

@@ -40,14 +40,20 @@ Git: nothing committed. `plans/` and `reports/v1-plan-audit-2026-09-21.md` are u
 
 Two high findings were settled in the same pass: **travellers cost itineraries on published times including the player's allowance**, not the technical minimum (05) — which makes padding a demand lever as well as a punctuality one — and **national performance is a release gate reached through an early synthetic probe**, not a precondition for writing the first simulation (08 closing paragraph).
 
-**Four high findings remain**, each needing a decision round:
+**All six high findings are now settled too.** Four of them in a later pass:
 
-- **Served-area budget** (05): the aggregate-flows fallback does little if travellers outside the served area never existed. Budget routing and traveller counts explicitly before changing the model.
-- **Performance targets** (08): no step size and no benchmark hardware, so the figures cannot establish feasibility. One worker also runs a 15-second validation that would stall its own simulation.
-- **Borrowing traps** (06): zero-revenue startup and a structurally loss-making network can both become unrecoverable. Needs explicit scenario capital, negative-balance behaviour, and a demonstrated recovery path.
-- **Service-due and siding capacity** (04): whether a servicing-only empty movement is allowed, and whether a siding holds one train or several by total usable length — the prose and the acceptance example do not currently agree.
+- **Served-area budget** (05): the aggregate-flows fallback is **withdrawn**, not refined — it aggregated travellers that were never instantiated. A measurement obligation replaces it, and this plan now carries no reassuring answer to the scale question until something exists to measure. That is deliberate.
+- **Performance targets** (08): every figure is now a claim about a named reference machine and browser at p95, with a stated step size. Tier 2 validation runs as cancellable bounded slices over versioned immutable inputs; stale results are discarded.
+- **Servicing and sidings** (04): an overrun train may make one empty movement to a depot that can service it, and nothing else. A siding holds any trains whose combined length fits — the acceptance table was right and the prose was wrong.
 
-The **six smaller consistency repairs** in the audit's second section are also still open. They are narrow enough to decide without a full round.
+**The economy changed shape entirely.** The user reversed two settled decisions mid-round:
+
+- **Bounded borrowing is gone.** No loans, no principal, no term, no capacity rule. The balance goes negative without limit and spending beyond it *is* the borrowing.
+- **Insolvency no longer blocks anything**, and debt carries no consequence at all — no interest, no penalty, no effect on contracts. It is a number the player carries.
+- The accepted cost is written into plan 06 rather than softened: **money no longer constrains any individual decision.** The weekly statement and the attribution of a bad week now carry the entire burden of making the economy matter, which raises their weight in plan 07 considerably.
+- That change dissolved the difference between the two game modes, since sandbox was defined as the mode that never blocks. The user redefined them by **what money means**: management has a balance, debt, statement and contracts; **sandbox tracks no total at all**, keeping only fares and profitability so a player can still see whether a corridor would pay. Two readings of that instruction are marked in plan 06 as mine — that sandbox keeps per-week profitability because a rate is not a total, and that contracts go with management.
+
+The **six smaller consistency repairs** in the audit's second section are the only audit work left. They are narrow enough to decide without a full round, and at least two are already fixed in passing.
 
 The “agent” to “traveller” rename is **done** — 93 occurrences across 00, 01, 05 and 08. This file's “next agent” reference means an AI agent and was deliberately left alone.
 
@@ -105,7 +111,7 @@ Then **09 last** — it selects a bounded first-playable slice from what the oth
 3. Plan 05's coefficients: attraction exponent, distance decay, value of time per purpose, transfer and crowding penalties, logit scale. The model's behaviour depends on these more than on its structure.
 4. Plan 06's cost figures need sourcing from Swedish evidence.
 
-**Plan 08's performance targets cannot be validated by discussion at all.** They need an implementation to measure against. If the national scenario proves unreachable, plan 05's aggregate-flows-outside-the-served-area fallback is the first response — not abandoning the worker boundary.
+**Plan 08's performance targets still cannot be validated by discussion**, but the plan now says what would validate them: a named reference machine, a stated step size, and p95 over repeated runs. If the national scenario proves unreachable, the first response is measurement — routing cost against traveller population, caching, shared search — not a change to the demand model, and not abandoning the worker boundary. Plan 05's aggregate-flows fallback no longer exists to reach for.
 
 **The “agent” rename is closed.** The user confirmed it: plan 05's demand unit is now a “traveller” throughout, and plan 05's status line records why the term changed.
 
