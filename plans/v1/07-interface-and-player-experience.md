@@ -2,7 +2,7 @@
 
 Status: agreed direction from the interface planning discussion, not an implementation specification. The surface model, workspace set, editor forms, diagram scope, map overlay policy, time control placement, conflict presentation, assistance presentation, and the player-facing vocabulary are settled in kind. Visual design, layout figures, and the contents of individual panels are not settled, and onboarding is deliberately deferred out of v1.
 
-This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), and the subsystem plans [02](02-infrastructure-and-operations.md), [03](03-services-and-timetabling.md), [04](04-fleet-and-depots.md), [05](05-passengers-and-demand.md), [06](06-economy-and-progression.md), and [08](08-simulation-architecture-and-saves.md). It is the last subsystem plan and carries a backlog from every one of them.
+This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), and the subsystem plans [02](02-infrastructure-and-operations.md), [03](03-routes-and-timetabling.md), [04](04-fleet-and-depots.md), [05](05-passengers-and-demand.md), [06](06-economy-and-progression.md), and [08](08-simulation-architecture-and-saves.md). It is the last subsystem plan and carries a backlog from every one of them.
 
 It was grounded in the existing interface first; those notes are kept separately in [07-NOTES-interface-grounding.md](07-NOTES-interface-grounding.md) rather than repeated here.
 
@@ -18,11 +18,11 @@ Success means a player can carry out the vision's loop — identify demand, cons
 
 ### Requirements inherited from the game vision
 
-- Players name services and select their routes by choosing stations on the map.
+- Players name routes and choose their stations on the map.
 - Players author timetables manually, with individual station times and arrangements for stopping, holding, or slowing on passing tracks.
 - Provide pause and fast-forward controls.
 - Handle signalling automatically. Players do not configure signals, blocks, junction routing, or advanced dispatching, and the interface must not expose them.
-- Let players select service paths and passing arrangements through understandable map and timetable controls.
+- Let players choose where a route runs, and its passing arrangements, through understandable map and timetable controls.
 
 ### The map is the application; workspaces open over it
 
@@ -196,7 +196,7 @@ One small inherited oddity worth fixing deliberately rather than inheriting: the
 ## Dependencies
 
 - **Infrastructure and operations (02):** supplies named delay causes for the status region and the planned-against-actual diagram, whose corridor scope this plan settles; requires that signalling never be exposed, which the assistance diff respects.
-- **Services and timetabling (03):** supplies the authoring model this plan builds surfaces for. **This plan changes it**: the pattern object dissolves into route and timetable, and service, duty and published week are renamed route, schedule and timetable. Whole-trip detachment carries over unchanged.
+- **Routes and timetabling (03):** supplies the authoring model this plan builds surfaces for. **This plan changes it**: the pattern object dissolves into route and timetable, and service, duty and published week are renamed route, schedule and timetable. Whole-trip detachment carries over unchanged.
 - **Fleet and depots (04):** supplies the catalogue, owned trains, depots and sidings for the Fleet workspace, and the assignment of rolling stock to schedules with its named failures. Usable siding length must be shown against drawn length, as that plan requires.
 - **Passengers and demand (05):** supplies forecast, actual journeys, the traveller inspector and lost-demand causes for Finance. **This plan narrows its three-layer interface requirement** to separation in the model and the numbers rather than on the map.
 - **Economy and progression (06):** supplies the weekly statement, contracts and cost previews. There are no borrowing controls to design, since bounded borrowing was removed there. The statement carries unusual weight because nothing is blocked for want of money.

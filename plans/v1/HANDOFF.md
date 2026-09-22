@@ -15,7 +15,7 @@ Written 2026-09-21. Updated 2026-09-22 after plan 07. For the next agent picking
 | [00-game-vision.md](00-game-vision.md) | Living summary. Records settled mechanics from every completed plan and strikes through resolved proposals. **Update it whenever a plan settles something directional.** |
 | [01-development-plan-roadmap.md](01-development-plan-roadmap.md) | Living index. Holds the plan table, the dependency notes, the nine-point checklist every plan follows, and the "next discussion" pointer. |
 | [02-infrastructure-and-operations.md](02-infrastructure-and-operations.md) | Complete |
-| [03-services-and-timetabling.md](03-services-and-timetabling.md) | Complete |
+| [03-routes-and-timetabling.md](03-routes-and-timetabling.md) | Complete |
 | [04-fleet-and-depots.md](04-fleet-and-depots.md) | Complete |
 | [05-passengers-and-demand.md](05-passengers-and-demand.md) | Complete |
 | [06-economy-and-progression.md](06-economy-and-progression.md) | Complete |

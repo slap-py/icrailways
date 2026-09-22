@@ -2,11 +2,11 @@
 
 Status: agreed direction from the initial and second planning discussions, not an implementation specification. The station, loop, movement, separation, and live-edit models are now settled in kind; numerical parameters and several behavioural details still need decisions.
 
-This document records determinations made using the [game vision](00-game-vision.md) and [development plan roadmap](01-development-plan-roadmap.md), and supplies the operational rules that [services and timetabling](03-services-and-timetabling.md) depends on. It separates confirmed choices from questions that remain open; the earlier proposed draft was not adopted as a specification.
+This document records determinations made using the [game vision](00-game-vision.md) and [development plan roadmap](01-development-plan-roadmap.md), and supplies the operational rules that [routes and timetabling](03-routes-and-timetabling.md) depends on. It separates confirmed choices from questions that remain open; the earlier proposed draft was not adopted as a specification.
 
 ## Goals
 
-Make infrastructure capacity matter to train operations while keeping construction simple. Players should be able to build a railway, manually timetable services, observe conflicts and delays, and improve the result without configuring signalling or managing individual junction movements.
+Make infrastructure capacity matter to train operations while keeping construction simple. Players should be able to build a railway, manually timetable routes, observe conflicts and delays, and improve the result without configuring signalling or managing individual junction movements.
 
 Success means that track capacity, train performance, platform length, and passing arrangements have understandable consequences, while the player retains control over the timetable.
 
@@ -19,7 +19,7 @@ Success means that track capacity, train performance, platform length, and passi
 - Support configurable platform counts and lengths, plus non-platform passing tracks at stations.
 - Model train performance and actual track/platform occupancy.
 - Handle signals, blocks, junction routing, and advanced dispatching automatically rather than exposing them as player configuration.
-- Preserve manual service paths, timetables, and passing arrangements, with advice and an optional easier assistance mode.
+- Preserve manually authored routes, timetables, and passing arrangements, with advice and an optional easier assistance mode.
 - Use the same operating simulation in management and sandbox modes.
 
 ### Simple construction controls
@@ -82,7 +82,7 @@ Stability matters: plan 03 re-validates the draft continuously, and platform ass
 
 Advise players about conflicts before operation, but allow imperfect timetables to run. Trains wait safely when movements conflict, letting players see the consequences and improve their timetable.
 
-This decision concerns timing and capacity conflicts. It does not permit departures over broken routes: infrastructure edits that invalidate a service prevent its next departure until repaired.
+This decision concerns timing and capacity conflicts. It does not permit departures over broken routes: infrastructure edits that invalidate a route prevent its next departure until repaired.
 
 ### Short platforms and loop lengths
 
@@ -98,7 +98,7 @@ The numerical penalty scale and clearance allowance are still to be set.
 
 ### Automatic track choice
 
-On sections with multiple tracks, the game chooses a usable track between the player's scheduled stops and passing arrangements. Automatic choices must respect the selected service route and planned passing arrangements.
+On sections with multiple tracks, the game chooses a usable track between the player's scheduled stops and passing arrangements. Automatic choices must respect the selected route and its planned passing arrangements.
 
 Players do not need to assign every intermediate track. Detailed direction defaults, available connections, and track-selection rules remain open.
 
@@ -124,7 +124,7 @@ Numerical performance values and connection speed limits remain to be determined
 
 ### Electrification is strict
 
-An electric train requires continuous electrification over every part of its path: running lines, platform tracks, loops, and depot access alike. Any gap makes the path unusable, which plan 03's validation reports as a service or duty problem rather than discovering at runtime. Diesel trains run anywhere.
+An electric train requires continuous electrification over every part of its path: running lines, platform tracks, loops, and depot access alike. Any gap makes the path unusable, which plan 03's validation reports as a route or schedule problem rather than discovering at runtime. Diesel trains run anywhere.
 
 There is no coasting through short unwired gaps and no exemption for yards and depot access. Wiring a depot is part of the cost of running electric trains.
 
@@ -132,9 +132,9 @@ There is no coasting through short unwired gaps and no exemption for yards and d
 
 Pause to edit infrastructure and apply accepted changes immediately. Construction duration and disruption from ongoing works are not part of the initial approach.
 
-Before applying an edit, show affected services. If the edit breaks a service, allow the change and flag that service, preventing its next departure until the problem is repaired. Do not require every affected service to be repaired before the infrastructure edit can be applied.
+Before applying an edit, show affected routes. If the edit breaks a route, allow the change and flag that route, preventing its next departure until the problem is repaired. Do not require every affected route to be repaired before the infrastructure edit can be applied.
 
-Trains already operating are protected more strictly than services. An edit is rejected if any train currently running would lose a valid path to the end of its trip — not merely if the edit touches track the train occupies or has reserved. A running train can therefore veto an edit well ahead of itself, and the rejection must name the train and the trip it would strand.
+Trains already operating are protected more strictly than routes. An edit is rejected if any train currently running would lose a valid path to the end of its trip — not merely if the edit touches track the train occupies or has reserved. A running train can therefore veto an edit well ahead of itself, and the rejection must name the train and the trip it would strand.
 
 The distinction is deliberate: a **future departure** may be broken and flagged, because the player has until that departure to repair it; a **trip already underway** may not, because there is no point at which the player could have fixed it.
 
@@ -161,11 +161,11 @@ Operational connections and usable holding lengths must be defined before the ex
 The agreed workflow is:
 
 1. Build or edit infrastructure through simple counts, lengths, speed, and electrification controls.
-2. Author service routes and timetable arrangements in the dedicated service/timetable workflow.
+2. Author routes and timetable arrangements in the dedicated route and timetable workflow.
 3. Review conflict advice, with the option to operate an imperfect timetable.
 4. Observe trains choosing tracks automatically, waiting safely, and retaining planned passing locations.
 5. Improve the timetable or pause and rebuild infrastructure.
-6. Review services affected by an infrastructure edit, then repair flagged services before their next departure.
+6. Review routes affected by an infrastructure edit, then repair flagged routes before their next departure.
 7. Read named delay causes on waiting trains and the planned-against-actual diagram, and respond by editing the timetable or the infrastructure.
 
 The presentation of previews, map overlays, delay explanations, and the time-distance diagram belongs to the interface plan; this document settles what must be explained, not how it looks.
@@ -176,9 +176,9 @@ The following are planning needs implied by the agreed behaviour, not settled sc
 
 - **Infrastructure:** represent usable operational tracks and connections, platform lengths, loop holding lengths, speed restrictions, and electrification.
 - **Train operations:** expose train length and performance, occupied track/platform space, and the reason a train is waiting.
-- **Services and timetables:** retain player-authored routes and passing locations separately from automatic intermediate track choices and actual delays.
-- **Infrastructure editing:** identify affected services and operating trains, reject unsafe edits, and flag services whose next departure is blocked.
-- **Advice and interface:** explain conflicts, short-platform consequences, and changes needed to restore service validity.
+- **Routes and timetables:** retain player-authored routes and passing locations separately from automatic intermediate track choices and actual delays.
+- **Infrastructure editing:** identify affected routes and operating trains, reject unsafe edits, and flag routes whose next departure is blocked.
+- **Advice and interface:** explain conflicts, short-platform consequences, and changes needed to restore route validity.
 
 Persisted versus derived state, reservation representation, and save migration belong to the architecture discussion. This document does not settle those technical choices.
 
@@ -199,7 +199,7 @@ The models are settled in kind. What remains is mostly numerical, plus a few beh
 
 ## Dependencies
 
-- **Services and timetabling (03):** now written. It consumes the technical minimum running time, track and platform occupancy, separation rules, and blocked-departure handling defined here, and owns routes, authored passing arrangements, duties, draft/published activation, and conflict advice.
+- **Routes and timetabling (03):** now written. It consumes the technical minimum running time, track and platform occupancy, separation rules, and blocked-departure handling defined here, and owns routes, authored passing arrangements, schedules, draft/published activation, and conflict advice.
 - **Fleet and depots (04):** now written. It supplies the train lengths, maximum speeds, acceleration and braking rates, traction types, and reversal minimums this plan's movement, separation, and electrification rules consume, and it makes depots explicitly wired or unwired. The separation formulae remain this plan's; plan 04 supplies the braking rates they take as input.
 - **Passengers and demand (05):** now written. It consumes the shared closed-form running time, actual occupancy, and named delays, and replaces the prototype's section-speed journey estimate with this plan's function. The passenger consequences of short platforms, waiting, and delays are settled there.
 - **Economy and progression (06):** now written. Construction, electrification, station, and depot costs are recalibrated into SEK there, with recurring maintenance added. Affordability becomes a further reason a construction edit cannot be applied, alongside this plan's running-train veto.
@@ -225,10 +225,10 @@ These scenarios capture the agreed direction. Numerical expectations and unresol
 | A speed profile is needed for validation and for runtime | Both use the same closed-form piecewise calculation, giving identical technical minimum running times. |
 | Two free platforms are equally usable | The game picks the one conflicting least with other planned movements, and keeps its previous choice when they are otherwise equal. |
 | A train is longer than a loop's usable holding length | It cannot use that loop to wait clear of another train. |
-| Several intermediate tracks are usable | The game chooses a track while respecting the service route and passing arrangements. |
+| Several intermediate tracks are usable | The game chooses a track while respecting the route and its passing arrangements. |
 | A train is late for a planned meeting or overtake | The planned location remains fixed; trains wait safely and the delay is explained. |
 | Infrastructure speed exceeds the train's capability | Train performance still limits movement, alongside connection restrictions. |
-| A paused edit breaks a service whose trains are not endangered | The player sees the affected service, can apply the edit, and its next departure is blocked until repaired. |
+| A paused edit breaks a route whose trains are not endangered | The player sees the affected route, can apply the edit, and its next departure is blocked until repaired. |
 | An edit would leave a running trip without a path to its end | The edit is rejected, naming the train and trip, even where the edit is far ahead of the train's current position and reservations. |
 
 ## Deferred features and planning boundaries

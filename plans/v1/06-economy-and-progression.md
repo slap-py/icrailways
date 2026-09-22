@@ -2,7 +2,7 @@
 
 Status: agreed direction from the economy and progression planning discussion, not an implementation specification. The currency basis, financial model depth, fare structure, progression mechanism, accounting period, debt treatment, legacy save treatment, and sandbox behaviour are settled in kind. The insolvency rule and bounded borrowing were both removed on 21 September, and the positions they replace are recorded below. Every numerical value is proposed and must be verified and balanced before implementation.
 
-This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), and the preceding subsystem plans [02](02-infrastructure-and-operations.md), [03](03-services-and-timetabling.md), [04](04-fleet-and-depots.md), and [05](05-passengers-and-demand.md).
+This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), and the preceding subsystem plans [02](02-infrastructure-and-operations.md), [03](03-routes-and-timetabling.md), [04](04-fleet-and-depots.md), and [05](05-passengers-and-demand.md).
 
 It resolves the vision's insistence that moving to SEK be a deliberate cost and balance decision rather than a currency substitution, and it closes the financial loop the other plans assume: plan 04 identified the cost categories a train needs without pricing any, and plan 05 supplies the journeys revenue is earned from without setting a fare.
 
@@ -10,7 +10,7 @@ It resolves the vision's insistence that moving to SEK be a deliberate cost and 
 
 Make money the thing that forces choices. Every plan so far lets the player build and run whatever they like; this one decides what they can afford, what it costs to keep, and what they earn for it.
 
-Success means a player can see why they are or are not solvent, attribute it to specific decisions — this corridor was built to 250 km/h for demand that needed 160, this fleet is larger than the duties require, this service runs at a fare below what it costs to operate — and that building the right railway is meaningfully cheaper than building an impressive one.
+Success means a player can see why they are or are not solvent, attribute it to specific decisions — this corridor was built to 250 km/h for demand that needed 160, this fleet is larger than the schedules require, this route runs at a fare below what it costs to operate — and that building the right railway is meaningfully cheaper than building an impressive one.
 
 ## Agreed direction
 
@@ -70,7 +70,7 @@ Crew wages are not a cost line: plan 04 deliberately excluded crew as a modelled
 
 ### Continuous balance, weekly statement
 
-The balance moves as events occur, so a player watching a service run sees revenue arrive and running costs accrue. Alongside it, a **statement closes each timetable week** and reports by category: revenue by service, operating cost by category, maintenance, contract subsidy, interest, and the net result.
+The balance moves as events occur, so a player watching a route run sees revenue arrive and running costs accrue. Alongside it, a **statement closes each timetable week** and reports by category: revenue by route, operating cost by category, maintenance, contract subsidy, interest, and the net result.
 
 The week is the accounting period because the week is already the unit the player authors in plan 03. A statement that lines up with the timetable being edited makes cause and effect legible; a monthly period would not. The week wraps exactly as plan 03's does.
 
@@ -78,11 +78,11 @@ Capital spending appears in the week it occurs rather than being spread, since p
 
 ### Debt is carried, and nothing is blocked
 
-**Nothing is ever blocked for want of money.** Construction, purchases and operations all continue at any balance, however negative. There is no insolvency state, no game over, and no automatic withdrawal of services.
+**Nothing is ever blocked for want of money.** Construction, purchases and operations all continue at any balance, however negative. There is no insolvency state, no game over, and no automatic withdrawal of routes.
 
 Debt carries **no consequence of its own**: no interest on a negative balance, no penalty, no effect on contract offers. It is a number the player carries, and digging out of it is entirely their decision, made with the same actions they always had.
 
-This replaces what this plan originally said, which was that insolvency blocked new construction, purchases and borrowing while operations continued — shaped deliberately after plan 02's rule on infrastructure edits and plan 04's on service overruns, blocking the next commitment but never breaking what was underway. The player removed it. The argument for removal is that a block is a failure state wearing a different hat: the audit had already shown that a zero-revenue start and a structurally loss-making network could both make the block unrecoverable, and removing it dissolves that trap rather than tuning it.
+This replaces what this plan originally said, which was that insolvency blocked new construction, purchases and borrowing while operations continued — shaped deliberately after plan 02's rule on infrastructure edits and plan 04's on route overruns, blocking the next commitment but never breaking what was underway. The player removed it. The argument for removal is that a block is a failure state wearing a different hat: the audit had already shown that a zero-revenue start and a structurally loss-making network could both make the block unrecoverable, and removing it dissolves that trap rather than tuning it.
 
 The accepted cost is that there is no financial pressure in the simulation at all. Nothing pushes back on reckless spending, and a player who does not care about the balance will never be made to. That is the intended design, and plan 07 must make the consequences of a bad week legible enough that the player cares without being forced to.
 
@@ -90,11 +90,11 @@ There is no game over. The vision never asks for a losable game, and losing an h
 
 That sentence originally continued “a player who wants stakes has the constraint already; a player who wants none has sandbox”. Removing the insolvency block removed the constraint, so it is no longer true, and it leaves the two game modes without a financial difference between them. That is an open question below, not something this document should quietly resolve.
 
-### Fares: one national rate, per-service modifiers
+### Fares: one national rate, per-route modifiers
 
-The player sets a **base fare rate per passenger-kilometre**, and each service carries a **modifier** for its market position — a premium for an intercity product, a discount for a stopping service chasing volume.
+The player sets a **base fare rate per passenger-kilometre**, and each route carries a **modifier** for its market position — a premium for an intercity product, a discount for a stopping route chasing volume.
 
-One global lever keeps a large network from becoming a table of numbers to maintain, while the modifier gives the local control that makes a service a commercial decision. A journey's fare is derived from its distance and the modifiers of the services it uses, so a journey across two services prices coherently without a separate cross-network rule.
+One global lever keeps a large network from becoming a table of numbers to maintain, while the modifier gives the local control that makes a route a commercial decision. A journey's fare is derived from its distance and the modifiers of the services it uses, so a journey across two routes prices coherently without a separate cross-network rule.
 
 Plan 05 consumes the resulting fare as a term in generalised cost, converted to minutes by a purpose-specific value of time. This is the loop that makes fare policy interesting: raising the rate increases revenue per journey and reduces journeys, by different amounts for a business traveller and a student, and the net effect is not obvious in advance.
 
@@ -104,9 +104,9 @@ Ticket classes, reservations, season passes, and yield management are deferred, 
 
 Regional transport authorities offer **contracts**: a corridor or set of places, a minimum service level, a term, and a subsidy. The player accepts a contract and must meet its service level to be paid.
 
-This is authentically how Swedish regional rail is actually procured, and it does several things at once that a milestone list would not. It gives concrete goals tied to where the player has actually built, rather than generic targets. It creates real tension, because a contracted service must run at hours and frequencies the player would not choose commercially. And it is a second revenue stream, so a corridor that cannot pay for itself on fares alone can still be worth operating — which is the actual economics of regional rail and a genuinely interesting decision.
+This is authentically how Swedish regional rail is actually procured, and it does several things at once that a milestone list would not. It gives concrete goals tied to where the player has actually built, rather than generic targets. It creates real tension, because a contracted route must run at hours and frequencies the player would not choose commercially. And it is a second revenue stream, so a corridor that cannot pay for itself on fares alone can still be worth operating — which is the actual economics of regional rail and a genuinely interesting decision.
 
-A contract specifies at minimum a served corridor or place pair, a minimum service level expressed in departures and hours of operation, a term in weeks, and a subsidy per week. Compliance is measured against the published timetable and against actual operation, so a published service that persistently fails to run does not satisfy a contract.
+A contract specifies at minimum a served corridor or place pair, a minimum service level expressed in departures and hours of operation, a term in weeks, and a subsidy per week. Compliance is measured against the published timetable and against actual operation, so a published route that persistently fails to run does not satisfy a contract.
 
 Whether contracts are offered at a fixed subsidy or bid for competitively, how they are generated, and how non-compliance is penalised are open.
 
@@ -116,11 +116,11 @@ Removing the insolvency block removed what used to separate the modes, since san
 
 **Management mode has money as a concept.** A balance, opening capital, debt carried without limit, the weekly statement, and public service contracts. Nothing is blocked — but the total is tracked, reported, and is what the player is judged by.
 
-**Sandbox does not track total money at all.** There is no balance, no opening capital, no debt, no accumulating total, and no contracts. What it keeps is **ticket price and profitability**: the player still sets fares, and still sees whether a service or a corridor earns more than it costs to run. That is the information a sandbox is most useful for — a player testing whether a corridor would pay needs to see whether it would pay — and it needs no running total to provide it.
+**Sandbox does not track total money at all.** There is no balance, no opening capital, no debt, no accumulating total, and no contracts. What it keeps is **ticket price and profitability**: the player still sets fares, and still sees whether a route or a corridor earns more than it costs to run. That is the information a sandbox is most useful for — a player testing whether a corridor would pay needs to see whether it would pay — and it needs no running total to provide it.
 
 The distinction is therefore real rather than a preset: in sandbox the question “how much money do I have” has no answer, because nothing is counting. In management it is the whole question.
 
-Two consequences are my own reading of that instruction, recorded so they can be corrected rather than inherited silently. First, sandbox keeps per-service and per-week profitability reporting, because a rate is not a total; what it drops is the cumulative balance those weeks would otherwise sum into. Second, contracts go with management, because a contract is a commitment measured in subsidy paid into a balance that sandbox does not have.
+Two consequences are my own reading of that instruction, recorded so they can be corrected rather than inherited silently. First, sandbox keeps per-route and per-week profitability reporting, because a rate is not a total; what it drops is the cumulative balance those weeks would otherwise sum into. Second, contracts go with management, because a contract is a commitment measured in subsidy paid into a balance that sandbox does not have.
 
 This is one code path with two rule sets, matching the vision's requirement that both modes use the same operating simulation.
 
@@ -149,11 +149,11 @@ The demonstration budget is an objective rather than capital, and `DEMO_BUDGET` 
 1. Begin with opening capital, and a view of what a corridor will cost before committing to it.
 2. Build, seeing capital cost and the recurring commitment each build adds, rather than only the one-off figure.
 3. Buy trains against plan 04's catalogue, with purchase price and standing cost both visible.
-4. Set the base fare rate and per-service modifiers, and see the forecast effect on journeys and revenue from plan 05.
+4. Set the base fare rate and per-route modifiers, and see the forecast effect on journeys and revenue from plan 05.
 5. Review contract offers, accept those the network can serve, and read their service level as a requirement against the draft timetable.
 6. Operate, watching the balance move and reading the weekly statement by category.
 7. Fund the next expansion whenever they judge it right, carrying debt if the balance will not cover it.
-8. Attribute a poor result to a specific cause — overbuilt speed, oversized fleet, a fare below operating cost, an uncontracted thin service — and respond.
+8. Attribute a poor result to a specific cause — overbuilt speed, oversized fleet, a fare below operating cost, an uncontracted thin route — and respond.
 
 Statement presentation, cost previews, the contract browser, and how a recurring commitment is shown at build time belong to plan 07.
 
@@ -165,11 +165,11 @@ Planning needs implied by the agreed behaviour, not settled schemas:
 - **Account:** a balance, opening capital, and a transaction record sufficient to produce a weekly statement by category.
 - **Recurring commitments:** maintenance and standing costs derived from built infrastructure, owned depots, and owned trains, plus per-kilometre running costs from operated distance including empty movements.
 - **Opening capital:** scenario state rather than the module constant `DEMO_BUDGET` is today. No loan record exists: a negative balance is the whole of the debt model.
-- **Fare policy:** the base rate per passenger-kilometre and a per-service modifier, with a rule for pricing a journey spanning several services.
+- **Fare policy:** the base rate per passenger-kilometre and a per-route modifier, with a rule for pricing a journey spanning several routes.
 - **Contract:** served corridor or place pair, minimum service level in departures and operating hours, term in weeks, subsidy per week, acceptance state, and measured compliance.
 - **Mode rules:** one accounting implementation computing costs and revenue in both modes. Management adds a balance, opening capital, debt, the weekly statement and contracts on top of it; sandbox exposes only rates — fares and profitability — and holds no total. Neither ever blocks.
 - **Save version:** a bump with an explicit refusal of pre-SEK saves and a clear message.
-- **Interfaces consumed:** built infrastructure and its properties from plan 02; operated trips, published services, and the timetable week from plan 03; train purchase categories, owned trains, and operated distance from plan 04; travelled journeys and fare response from plan 05.
+- **Interfaces consumed:** built infrastructure and its properties from plan 02; operated trips, published routes, and the timetable week from plan 03; train purchase categories, owned trains, and operated distance from plan 04; travelled journeys and fare response from plan 05.
 - **Interfaces produced:** fares and fare policy to plan 05; affordability constraints on construction and purchases to plans 02 and 04; statement and contract state to plan 07.
 
 Transaction storage, statement derivation, and version gating belong to plan 08.
@@ -185,13 +185,13 @@ Transaction storage, statement derivation, and version gating belong to plan 08.
 - **Maintenance scaling:** how maintenance responds to speed, track count, and electrification, and whether usage contributes.
 - **Per-kilometre cost by type:** whether running cost is uniform per unit-kilometre or differs by type, which plan 04 left as a category without a value.
 - **Property acquisition realism:** whether SEK 25k per m² of floor area is defensible nationally, given land values vary enormously between Stockholm and Norrland.
-- **Fare modifier bounds:** how far a service modifier may deviate, and whether a contracted service's fare is the player's to set at all.
+- **Fare modifier bounds:** how far a route modifier may deviate, and whether a contracted route's fare is the player's to set at all.
 - **Depreciation and inflation:** both deferred, but whether a long game needs either.
 
 ## Dependencies
 
 - **Infrastructure and operations (02):** supplies what is built and its properties, priced here. Affordability becomes a new reason a construction edit cannot be applied, alongside plan 02's running-train veto.
-- **Services and timetabling (03):** supplies the published week, operated trips, and the week boundary the statement follows. Contract compliance is measured against the published timetable and actual operation.
+- **Routes and timetabling (03):** supplies the published timetable, operated trips, and the week boundary the statement follows. Contract compliance is measured against the published timetable and actual operation.
 - **Fleet and depots (04):** identified purchase price, standing cost, and per-kilometre running cost as categories without values; this plan prices them. Operated distance includes empty movements.
 - **Passengers and demand (05):** consumes fares and fare policy from here; supplies the travelled journeys revenue is earned from. The fare and value-of-time loop spans both documents.
 - **Interface and player experience (07):** now written. The weekly statement, contract browser and attribution of a poor result live in a near-full-screen Finance workspace, together with plan 05's demand diagnostics. Cost previews extend the existing construction sidebar, adding the recurring commitment beside the one-off price with no confirmation step. There are no borrowing controls to design. **Because sandbox tracks no total money, the Finance workspace is absent there rather than empty**, and the bottom bar carries three buttons instead of four — where sandbox's demand diagnostics then live is an open question there.
@@ -208,11 +208,11 @@ Numerical expectations must be added once the figures are verified and balanced.
 | Player compares 160 km/h against 250 km/h for the same corridor | The speed multiplier makes the faster option materially more expensive, in both capital and maintenance. |
 | Player electrifies a section | Priced per track-kilometre, separately from track construction, as today's model already does. |
 | Player builds a depot | Construction cost is charged for its sidings as well as for land acquired, which the prototype does not do. |
-| A week of operation closes | A statement reports revenue by service, operating and maintenance costs by category, subsidy, interest, and the net result. |
+| A week of operation closes | A statement reports revenue by route, operating and maintenance costs by category, subsidy, interest, and the net result. |
 | A train runs an empty movement | Its kilometres accrue running cost, because plan 04 makes empty movements real movements. |
 | Player raises the base fare rate | Revenue per journey rises and journeys fall, by different amounts per purpose, per plan 05's value-of-time treatment. |
-| Player sets a premium modifier on an intercity service | That service's fares rise without affecting a stopping service on the same corridor. |
-| A journey uses two services with different modifiers | It prices coherently from distance and the modifiers involved, with no separate cross-network rule. |
+| Player sets a premium modifier on an intercity route | That route's fares rise without affecting a stopping route on the same corridor. |
+| A journey uses two routes with different modifiers | It prices coherently from distance and the modifiers involved, with no separate cross-network rule. |
 | Player borrows to build ahead of demand | The loan is granted within capacity, interest appears in the statement, and the corridor can be built before it earns. |
 | Player attempts to borrow beyond capacity | Refused against the stated capacity rule, naming what bounds it. |
 | Balance cannot fund a construction edit | The edit proceeds and the balance goes negative. Affordability is never a reason an edit is refused. |
@@ -221,8 +221,8 @@ Numerical expectations must be added once the figures are verified and balanced.
 | Player accepts a public service contract | Its minimum service level becomes a requirement visible against the draft timetable, and subsidy is paid while it is met. |
 | A contracted service level is not met | Reported against that contract, with the consequence the non-compliance rule specifies, rather than silently unpaid. |
 | A thin corridor cannot pay on fares alone | With a contract it can be worth operating; without one it cannot, which is a real decision rather than a bug. |
-| Player operates in sandbox | Fares, costs and per-service profitability are computed and shown. There is no balance to read, no debt, and no contracts, and nothing is ever blocked. |
-| Player asks how much money they have in sandbox | The question has no answer, because no total is kept. Profitability answers whether a service pays, which is the question sandbox exists to serve. |
+| Player operates in sandbox | Fares, costs and per-route profitability are computed and shown. There is no balance to read, no debt, and no contracts, and nothing is ever blocked. |
+| Player asks how much money they have in sandbox | The question has no answer, because no total is kept. Profitability answers whether a route pays, which is the question sandbox exists to serve. |
 | Player operates in management mode | The same costs and revenue additionally accumulate into a balance and a weekly statement, and contracts are offered. Nothing is blocked there either. |
 | Player opens a pre-SEK save | It is refused with a clear message explaining the economy change, not silently loaded or partially migrated. |
 | Player asks why the week lost money | The statement attributes it by category, and a specific cause can be identified from it. |

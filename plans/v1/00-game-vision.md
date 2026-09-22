@@ -6,11 +6,11 @@ This document separates the existing prototype, agreed game direction, and propo
 
 ## Agreed direction
 
-Build a Swedish passenger railway game combining map-based construction with detailed, manually authored timetables. The intended visual and functional inspiration is Subway Builder mixed with NIMBY Rails, with deeper timetable analysis and advice. Support local, regional, and intercity passenger services across Sweden.
+Build a Swedish passenger railway game combining map-based construction with detailed, manually authored timetables. The intended visual and functional inspiration is Subway Builder mixed with NIMBY Rails, with deeper timetable analysis and advice. Support local, regional, and intercity passenger routes across Sweden.
 
 The core gameplay loop is:
 
-**Identify travel demand → construct infrastructure → timetable services → operate trains → evaluate results → improve the network.**
+**Identify travel demand → construct infrastructure → timetable routes → operate trains → evaluate results → improve the network.**
 
 ### Construction
 
@@ -20,19 +20,19 @@ The core gameplay loop is:
 - Allow configurable station platform counts and lengths, plus non-platform passing tracks. Station passing tracks remain to be implemented.
 - Include construction and maintenance costs for tracks, stations, and depots. Express all game finances in SEK.
 
-### Services, timetables, and operations
+### Routes, timetables, and operations
 
-- Players name services and select their routes by choosing stations on the map.
+- Players name routes and choose their stations on the map.
 - Players author timetables manually, with individual station times and arrangements for stopping, holding, or slowing on passing tracks.
 - Use a weekly timetable with weekday/weekend patterns, rush-hour demand, and overnight services. Provide pause and fast-forward controls.
 - Model real train performance and actual track/platform occupancy so infrastructure capacity affects operations.
 - Handle signalling automatically. Players do not configure signals, blocks, junction routing, or advanced dispatching.
-- Let players select service paths and passing arrangements through understandable map and timetable controls.
+- Let players choose where a route runs, and its passing arrangements, through understandable map and timetable controls.
 
 Settled in the [interface and player experience plan](07-interface-and-player-experience.md):
 
 - The map is the application. A bottom bar opens four workspaces — Routes, Timetable, Fleet and Finance — and a workspace is as large as its work requires: Routes is a sidebar because it uses the map, the others cover it because they do not. Construction stays a contextual sidebar and is not a workspace.
-- The player-facing vocabulary is canonical everywhere: **route**, **schedule**, **timetable**, replacing service, duty and published week.
+- The player-facing vocabulary is canonical everywhere: **route**, **schedule**, **timetable**, replacing service, duty and published timetable.
 - Plan 03's pattern object dissolves. A route carries the authored per-stop content; placing a route on the timetable generates trips. A corridor served both fast and slow needs two routes.
 - Assigning several trains to one schedule repeats the whole schedule at a time offset, which is how regular intervals are authored.
 - The timetable is a table for authoring and a linked time-distance diagram for analysis, covering one route or corridor at a time.
@@ -52,38 +52,38 @@ Settled in the [infrastructure and operations plan](02-infrastructure-and-operat
 - Waiting trains name their specific blocker, and a time-distance diagram shows actual against planned.
 - Advise on conflicts, including a faster train catching a slower train. Offer an easier assistance mode that suggests solutions to difficult passing arrangements while preserving player control of the timetable.
 
-Settled in the [services and timetabling plan](03-services-and-timetabling.md):
+Settled in the [routes and timetabling plan](03-routes-and-timetabling.md):
 
-- A service is bidirectional and owns one route; a trip may run any sub-range of that route in either direction, so short workings need no separate service.
+- A route is bidirectional and owns one route; a trip may run any sub-range of that route in either direction, so short workings need no separate route.
 - Players author running-time allowances, dwells, and call types rather than typing clock times; times are derived, displayed, and individually overridable.
 - Patterns generate trips that stay linked to them; directly editing a trip detaches it. The stored week is seven explicit days.
 - An overnight trip belongs to its departure day and carries times past 24:00. The week wraps.
 - Meets and overtakes are explicit player-created objects, not inferred from times.
 - Platforms are assigned automatically, with optional player pins.
-- Players chain trips into duties in the timetable workflow; the fleet plan supplies what makes a chain possible.
-- The draft week is validated continuously as it is edited, and published by explicit activation. Each actual departure is identified by trip and week occurrence, so publishing mid-week never runs a departure twice and never fires one whose time has passed; such departures are reported as skipped.
+- Players chain trips into schedules in the timetable workflow; the fleet plan supplies what makes a chain possible.
+- The draft timetable is validated continuously as it is edited, and published by explicit activation. Each actual departure is identified by trip and week occurrence, so publishing mid-week never runs a departure twice and never fires one whose time has passed; such departures are reported as skipped.
 
 ### Fleet and depots
 
-- Start with purchased preset train types and individual train duties: sequences of trips assigned to physical trains.
+- Start with purchased preset train types and individual train schedules: sequences of trips assigned to physical trains.
 - Account for turnaround, depot storage, and routine servicing.
 - Keep automatic fleet assignment as a later possibility, not a requirement for the initial implementation.
 
 Settled in the [fleet and depots plan](04-fleet-and-depots.md):
 
 - The catalogue is a list of fixed, self-contained units named after real Swedish classes. There are no locomotives, coaches, or composition; the overnight sleeper is one indivisible unit.
-- Same-type units may be coupled in multiples for a whole duty. Dynamic coupling and splitting are deferred.
-- Turnaround is one minimum reversal time per type, which duty validation checks as a floor.
-- Empty movements are derived by the duty rather than authored, and are real timed movements occupying track.
+- Same-type units may be coupled in multiples for a whole schedule. Dynamic coupling and splitting are deferred.
+- Turnaround is one minimum reversal time per type, which schedule validation checks as a floor.
+- Empty movements are derived by the schedule rather than authored, and are real timed movements occupying track.
 - Depots are pools of individual sidings with usable lengths derived from the drawn footprint. Stabling order is not modelled.
 - A depot is explicitly wired or unwired as a build option, rather than inheriting electrification from the line it connects to.
 - Servicing is triggered by accumulated distance and is a scheduling constraint, not a failure mode. An overrun blocks a next departure, never a trip underway.
-- Duty-to-train assignment belongs to the fleet plan, which validates that the assignment is physically possible.
+- Schedule-to-train assignment belongs to the fleet plan, which validates that the assignment is physically possible.
 
 ### Passengers and competing travel
 
 - Develop the existing walking, cycling, transit, and car access model into door-to-door passenger journey choices.
-- Include travel to and from stations, waiting, onboard journey time, service frequency, required transfers, ticket prices, and population at origins and destinations.
+- Include travel to and from stations, waiting, onboard journey time, route frequency, required transfers, ticket prices, and population at origins and destinations.
 - Represent car, air, cycling, walking, and feeder transit as background alternatives appropriate to the journey.
 - Do not require active rival businesses or a complete real-world external timetable network for v1.
 
@@ -93,7 +93,7 @@ Settled in the [passengers and demand plan](05-passengers-and-demand.md):
 - Demand is simulated with individual passenger travellers, each a sampled journey created when travel is decided and destroyed on arrival, rather than a standing population of residents.
 - Destination attraction comes from population only, made directional by purpose and superlinear in size. No new dataset is added; the OSM building proxy is the named intended extension if that proves too coarse.
 - Nine broad journey purposes carry hourly weekly profiles that are weights with a floor, never gates, so uncommon travel at unusual hours exists rather than being modelled away.
-- Travellers choose by generalised cost over real itineraries built from the published timetable, against journey-appropriate background modes, drawing probabilistically rather than all taking the best option. They use published times including the player's running-time allowance, not the technical minimum, so padding a service genuinely makes it less attractive.
+- Travellers choose by generalised cost over real itineraries built from the published timetable, against journey-appropriate background modes, drawing probabilistically rather than all taking the best option. They use published times including the player's running-time allowance, not the technical minimum, so padding a route genuinely makes it less attractive.
 - Fares trade against time through a purpose-specific value of time, so price sensitivity differs by traveller. Plan 06 still owns every actual price.
 - Train capacity is a hard limit: a denied traveller waits or abandons, and denied boardings are a named diagnostic. Where sampling gives a traveller a weight above one, a partly full train splits it, so denied boardings are counted in people.
 - Reliability is remembered in aggregate per route rather than per traveller, so a chronically late service loses demand gradually and regains it gradually.
@@ -109,7 +109,7 @@ Settled in the [economy and progression plan](06-economy-and-progression.md):
 - The player has a real account — opening capital, ticket revenue, and recurring maintenance and operating costs — replacing the prototype's cumulative spend total. The balance may go negative without limit; there is no separate loan mechanism.
 - The balance moves continuously and a statement closes each timetable week by category, so the accounting period matches the week the player authors.
 - Nothing is ever blocked for want of money, and debt carries no consequence of its own. There is no insolvency state and no game over. This replaces an earlier rule that insolvency blocked new commitments, removed on 21 September; it leaves the financially constrained management mode named above without a financial constraint, so the modes are redefined by what money means rather than by what it prevents — see below.
-- Fares are a national rate per passenger-kilometre set by the player, with a per-service modifier.
+- Fares are a national rate per passenger-kilometre set by the player, with a per-route modifier.
 - Progression comes from public service contracts: a corridor, a minimum service level, a term, and a subsidy the player is paid while meeting it.
 - The two modes differ in what money means, not in what it prevents. Management mode tracks a balance, debt, a weekly statement and contracts. Sandbox tracks no total at all — it keeps fares and profitability so a player can see whether a corridor would pay, and holds no balance and no contracts. Neither mode ever blocks. Revised 21 September, after removing the insolvency block left the modes indistinguishable.
 - Saves predating the SEK economy are refused rather than migrated.
@@ -132,7 +132,7 @@ The current React/TypeScript map application is a railway construction prototype
 - A network overview with a simple city-pair demand estimate and frequency input.
 - Browser-local manual save/load.
 
-These are foundations rather than a running railway simulation. There are no operating trains, individual duties, timetable system, simulated passenger journeys, or operating economy. Catchment figures represent potential station reach, not actual passengers. The city-pair estimate does not route passengers through scheduled services.
+These are foundations rather than a running railway simulation. There are no operating trains, individual schedules, timetable system, simulated passenger journeys, or operating economy. Catchment figures represent potential station reach, not actual passengers. The city-pair estimate does not route passengers through scheduled services.
 
 The population and catchment model has no journey purposes, no time of day, no travellers, no itineraries, no transfers, no fares, and no capacity or crowding, and neither end of its city-pair estimate is anything but residents. Its journey times come from section speed alone, which plan 02's shared running time replaces rather than corrects.
 
@@ -145,7 +145,7 @@ Current costs are in euros, and accumulated construction spending is not an acco
 The following ideas should be evaluated in the detailed plans; they are not settled mechanics. Struck-through entries have since been resolved and are kept here to record where the decision was made:
 
 - ~~**Destination attraction**~~ — resolved in [plan 05](05-passengers-and-demand.md). No new dataset is added. Population remains the only input, but origin and destination stop being interchangeable: purposes have a direction, attraction scales superlinearly with size, and return travel is sampled explicitly. The accepted limitation is that a city centre and a dormitory suburb of equal population look alike as destinations, and the OSM building proxy is the named extension if that matters.
-- ~~**Draft and published timetables**~~ — resolved in [plan 03](03-services-and-timetabling.md). The player edits a draft, validated continuously, and publishes it by explicit activation. Trips already underway finish on their old times; later departures follow the new week. Actual times are runtime state and never overwrite the plan.
+- ~~**Draft and published timetables**~~ — resolved in [plan 03](03-routes-and-timetabling.md). The player edits a draft, validated continuously, and publishes it by explicit activation. Trips already underway finish on their old times; later departures follow the new week. Actual times are runtime state and never overwrite the plan.
 - **First playable corridor:** demonstrate a regional and an express sharing several stations, a single-track section, and a passing loop, with individually assigned trains. Use it to validate overtaking, opposing movements, connected passenger journeys, and financial consequences before broadening content.
 - ~~**Shared prediction and runtime rules**~~ — resolved in kind by [plan 02](02-infrastructure-and-operations.md) and completed by [plan 08](08-simulation-architecture-and-saves.md). The piecewise analytical speed profile is closed-form, so timetable validation and live operation compute running times from the same function rather than from two models kept in agreement. Plan 08 makes that singularity an architectural constraint rather than a convention, runs the simulation in a Web Worker on a fixed timestep, tiers validation against explicit time budgets, and sets three named performance scenarios so the national-scale cost question can be measured instead of argued.
 

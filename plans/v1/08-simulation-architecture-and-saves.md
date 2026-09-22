@@ -2,7 +2,7 @@
 
 Status: agreed direction from the simulation architecture planning discussion, not an implementation specification. The simulation's home, time model, persistence boundary, autosave behaviour, undo scope, validation tiering, and performance target structure are settled in kind. The persistence boundary and the undo scope were both revised after the 21 September audit, and each revision is recorded below alongside the position it replaces. The target figures themselves are proposed, and the subsystem interfaces are named rather than specified.
 
-This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), and the subsystem plans [02](02-infrastructure-and-operations.md), [03](03-services-and-timetabling.md), [04](04-fleet-and-depots.md), [05](05-passengers-and-demand.md), and [06](06-economy-and-progression.md).
+This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), and the subsystem plans [02](02-infrastructure-and-operations.md), [03](03-routes-and-timetabling.md), [04](04-fleet-and-depots.md), [05](05-passengers-and-demand.md), and [06](06-economy-and-progression.md).
 
 It is taken ahead of section 07 because every preceding plan has deferred something here, and two of those deferrals are load-bearing: plan 05's individual travellers and plan 03's continuous incremental validation have both been agreed without a cost budget. This is the only document that can say whether the agreed direction is affordable.
 
@@ -61,7 +61,7 @@ Determinism is testable, and a same-seed-same-outcome test should exist from the
 
 Reloading a save puts the player back where they were, with nothing quietly reset. The clock, running trips, train positions and speeds, occupancy and reservations, onboard loads, travellers and their chosen itineraries, owned trains and accumulated mileage, servicing progress, the ledger and balance, contract progress, reliability records, and the random generator's state all persist alongside authored state.
 
-**This reverses the position this document originally took.** The earlier rule was authored state only — infrastructure, services, timetables, duties, fleet, fares and contracts — with everything else recomputed on load, and a deliberately narrow exception persisting the clock, running trips and train positions. Travellers were to be resampled. That rule was chosen for honesty: a cached derived value is a chance for a save to disagree with the code that produced it, and that class of bug is subtle and long-lived.
+**This reverses the position this document originally took.** The earlier rule was authored state only — infrastructure, routes, timetables, schedules, fleet, fares and contracts — with everything else recomputed on load, and a deliberately narrow exception persisting the clock, running trips and train positions. Travellers were to be resampled. That rule was chosen for honesty: a cached derived value is a chance for a save to disagree with the code that produced it, and that class of bug is subtle and long-lived.
 
 It was overridden on the player's requirement, and the argument for the override is the stronger one. A save that resamples passengers, or rebuilds a number the player was watching, is not the same session — and this is a game in which a player diagnoses a bad week across several sittings. NIMBY Rails is the named reference: you reload and you are where you were. The 21 September audit reached the same conclusion from the other direction, observing that plan 02 makes dwell depend on passenger exchange and plan 06 earns fares from journeys, so resampled passengers change train timing and revenue rather than only the passengers.
 
@@ -102,11 +102,11 @@ If a session ends unexpectedly, the recovery slot is offered on next launch as a
 
 ### Undo is bounded to a paused editing session
 
-Before each edit, a snapshot of authored state is pushed to a stack; undo pops it. This covers construction, services, timetable, duties, fleet and fares uniformly, rather than construction alone as the roadmap literally asks. It avoids the failure mode of inverse-operation undo, where a missing or wrong inverse is silent corruption rather than a visible bug.
+Before each edit, a snapshot of authored state is pushed to a stack; undo pops it. This covers construction, routes, timetable, schedules, fleet and fares uniformly, rather than construction alone as the roadmap literally asks. It avoids the failure mode of inverse-operation undo, where a missing or wrong inverse is silent corruption rather than a visible bug.
 
 **Undo is available only while the simulation is paused, and the stack is cleared on resume, on load, and on publication.** This narrows what this document originally said, which was one snapshot stack over all authored state with no session boundary.
 
-The reason is that undo over a running railway is not well defined. Restoring an earlier balance would erase revenue the trains have since earned. Restoring earlier infrastructure could strand a train on track that no longer exists. Restoring an earlier published week would contradict trips already running against the current one. Each of those has a conceivable repair, and each repair is a source of invariant violations found late — which is the audit's objection, and it is correct. Bounding undo to a paused session removes the class rather than managing it. Plan 02 already requires a pause to edit infrastructure, so this extends an existing constraint rather than inventing one.
+The reason is that undo over a running railway is not well defined. Restoring an earlier balance would erase revenue the trains have since earned. Restoring earlier infrastructure could strand a train on track that no longer exists. Restoring an earlier published timetable would contradict trips already running against the current one. Each of those has a conceivable repair, and each repair is a source of invariant violations found late — which is the audit's objection, and it is correct. Bounding undo to a paused session removes the class rather than managing it. Plan 02 already requires a pause to edit infrastructure, so this extends an existing constraint rather than inventing one.
 
 The accepted cost is that there is no undo once the railway is running. A mistake made during operation is corrected by editing rather than by undoing, and a player who wants the stack back must pause.
 
@@ -116,7 +116,7 @@ Depth is bounded, and the bound is a memory decision against the scenario sizes 
 
 Plan 03 agreed continuous incremental validation without a cost. It is tiered:
 
-- **Tier 1, immediate, on every edit, within a stated time budget.** Structurally local checks: running-time allowances below the technical minimum, duty continuity and turnaround, routes broken by infrastructure edits, pinned platforms that cannot be satisfied, electrification and length incompatibility, and fleet assignment feasibility. These depend on the edited object and its immediate neighbours, so their cost scales with the edit rather than the network.
+- **Tier 1, immediate, on every edit, within a stated time budget.** Structurally local checks: running-time allowances below the technical minimum, schedule continuity and turnaround, routes broken by infrastructure edits, pinned platforms that cannot be satisfied, electrification and length incompatibility, and fleet assignment feasibility. These depend on the edited object and its immediate neighbours, so their cost scales with the edit rather than the network.
 - **Tier 2, debounced or on explicit request.** Network-wide analysis: headway and separation conflicts between trips, track and platform occupancy across the whole week, and meets and overtakes made impractical by times. **Tier 2 runs as cancellable, bounded slices over versioned immutable inputs, never as one synchronous pass.** The audit's objection is decisive: the national budget below is fifteen seconds, and fifteen synchronous seconds in the worker that also owns the clock would stop the railway and stop command handling with it. A slice that finishes against a superseded revision is discarded rather than reported.
 - **Publication always forces a full pass.** Plan 03 requires publication to report structural invalidity clearly, so it may not rely on a debounced tier having run.
 
@@ -156,7 +156,7 @@ The minimum split, named rather than specified:
 | --- | --- |
 | Worker: infrastructure | Operational track graph, connections, usable lengths, occupancy, reservations |
 | Worker: operations | Clock, train positions, movement, separation, delays, named blockers |
-| Worker: timetable | Draft and published weeks, patterns, trips, arrangements, duties, validation |
+| Worker: timetable | Draft and published timetables, patterns, trips, arrangements, schedules, validation |
 | Worker: fleet | Train catalogue, owned trains, stabling, distance accumulation, servicing |
 | Worker: demand | Traveller sampling, itinerary search, boarding, reliability records |
 | Worker: economy | Ledger, balance, loans, fares, contracts, statements |
@@ -175,7 +175,7 @@ The 21 September audit found the targets unfalsifiable as originally written, an
 | Route length | ~100 km | ~600 km | ~5,000 km |
 | Stations | 4 | 30 | 200 |
 | Depots | 1 | 4 | 20 |
-| Services | 2 | 12 | 60 |
+| Routes | 2 | 12 | 60 |
 | Trips per week | ~100 | ~1,500 | ~12,000 |
 | Trains | 10 | 80 | 500 |
 | Render | 60 fps | 60 fps | 30 fps minimum |
@@ -195,7 +195,7 @@ The prototype has manual whole-project save and load to one localStorage key, wi
 
 It has no clock, no worker of its own, no simulation state, no autosave, no undo, no import or export, no migration chain, and no performance test. Save validation contains one silent data-loss path. All application state and much application logic sit in a single 1,476-line component file.
 
-Nothing in the save format anticipates services, timetables, fleet, demand, or finance, which is every plan from 03 onward.
+Nothing in the save format anticipates routes, timetables, fleet, demand, or finance, which is every plan from 03 onward.
 
 ## Player workflow
 
@@ -239,7 +239,7 @@ Architecture is mostly invisible, but some of it is not:
 ## Dependencies
 
 - **Infrastructure and operations (02):** the shared movement function and occupancy model this plan requires be singular; the pause-to-edit rule the worker must quiesce for.
-- **Services and timetabling (03):** continuous incremental validation, now tiered with a budget; draft and published weeks as authored state; the week wrap the clock and statement follow.
+- **Routes and timetabling (03):** continuous incremental validation, now tiered with a budget; draft and published timetables as authored state; the week wrap the clock and statement follow.
 - **Fleet and depots (04):** owned trains, distance accumulation and servicing, all persisted; the derived-versus-cached depot figures question, resolved here in favour of deriving, because depot capacity recomputes invisibly from the drawn outline.
 - **Passengers and demand (05):** traveller sampling and itinerary search as the dominant runtime cost; travellers persisted with the rest of the session rather than resampled; the one-person-versus-weighted question resolved here, with weighted travellers splitting on partial boarding.
 - **Economy and progression (06):** ledger and statement derivation; the version gate that refuses pre-SEK saves as the first migration boundary.

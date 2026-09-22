@@ -2,7 +2,7 @@
 
 Status: agreed direction from the passengers and demand planning discussion, not an implementation specification. The demand unit, attraction basis, time profile, assignment method, traveller lifecycle, denied-boarding rule, fare treatment, and reliability memory are settled in kind. Coefficients, purpose weights, and the scalability strategy remain open. The demand unit was originally called an “agent” — agent-based modelling terminology, not an AI agent — and was renamed throughout on 21 September for clarity.
 
-This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), the [infrastructure and operations plan](02-infrastructure-and-operations.md), the [services and timetabling plan](03-services-and-timetabling.md), and the [fleet and depots plan](04-fleet-and-depots.md).
+This document records determinations made using the [game vision](00-game-vision.md), the [development plan roadmap](01-development-plan-roadmap.md), the [infrastructure and operations plan](02-infrastructure-and-operations.md), the [routes and timetabling plan](03-routes-and-timetabling.md), and the [fleet and depots plan](04-fleet-and-depots.md).
 
 It resolves the vision's open **destination attraction** proposal, and it is the plan that turns the network overview's typed-in frequency into a frequency read from the published timetable.
 
@@ -10,9 +10,9 @@ Unlike the preceding plans, this one governs subsystems that already partly exis
 
 ## Goals
 
-Make the railway's usefulness to travellers the thing the player is actually optimising. A station in the right place, a service at the right hour, a train long enough, and a fare people will pay should all show up as people travelling; getting any of them wrong should show up as people not travelling, and the player should be able to see which one it was.
+Make the railway's usefulness to travellers the thing the player is actually optimising. A station in the right place, a route at the right hour, a train long enough, and a fare people will pay should all show up as people travelling; getting any of them wrong should show up as people not travelling, and the player should be able to see which one it was.
 
-Success means a player can ask why a service is empty and get a specific answer — nobody lives within reach, the connection at the junction is twenty minutes, the train is full by the third stop, the fare is above what leisure travellers will pay at that journey time, or the service runs at hours nobody wants to travel.
+Success means a player can ask why a route is empty and get a specific answer — nobody lives within reach, the connection at the junction is twenty minutes, the train is full by the third stop, the fare is above what leisure travellers will pay at that journey time, or the route runs at hours nobody wants to travel.
 
 ## Agreed direction
 
@@ -31,7 +31,7 @@ The roadmap requires these to be distinct. They are distinct in kind, not merely
 | Layer | What it is | Needs a timetable? | Where it comes from |
 | --- | --- | --- | --- |
 | **Potential reach** | How many people can physically get to a station, and how — including travel opportunity between places the network does not serve | No | The existing catchment model, essentially unchanged |
-| **Forecast demand** | How many journeys the published week should attract, by hour and purpose | Yes | Aggregate estimate over the published timetable |
+| **Forecast demand** | How many journeys the published timetable should attract, by hour and purpose | Yes | Aggregate estimate over the published timetable |
 | **Actual journeys** | Who travelled, on which train, and what happened to them | Yes, and operation | Individual travellers during simulation |
 
 The prototype's current figures are potential reach and must keep saying so. A station with 40,000 residents in reach and no service has 40,000 potential reach, zero forecast demand, and zero actual journeys, and the interface must never let those three be mistaken for one another.
@@ -48,7 +48,7 @@ This is the decision that makes individual travellers affordable, and it is load
 
 Travellers are sampled only where rail is plausibly relevant — within reach of the player's stations, for journeys the network could serve. Demand between two places the player does not serve is not instantiated as travellers; it belongs to **potential reach**, not to forecast.
 
-This corrects a contradiction the 21 September audit found. Forecast demand is defined above as needing a published timetable — it is how many journeys the published week should attract — so demand between two wholly unserved places cannot live there, because there is no service to forecast against. Unserved travel opportunity and published-week forecast are different questions and must not share a layer. Which layer unserved demand belongs to is my own call; that the two must be distinguished is the audit's, and is not optional. If sampling still proves too costly at national scale, this plan originally named aggregate flows outside the served area as the intended fallback. **That fallback is withdrawn.** The 21 September audit observed that it saves almost nothing: travellers outside the served area were never instantiated in the first place, so there is nothing there to aggregate. It was chosen before anyone knew what was actually expensive.
+This corrects a contradiction the 21 September audit found. Forecast demand is defined above as needing a published timetable — it is how many journeys the published timetable should attract — so demand between two wholly unserved places cannot live there, because there is no service to forecast against. Unserved travel opportunity and published-week forecast are different questions and must not share a layer. Which layer unserved demand belongs to is my own call; that the two must be distinguished is the audit's, and is not optional. If sampling still proves too costly at national scale, this plan originally named aggregate flows outside the served area as the intended fallback. **That fallback is withdrawn.** The 21 September audit observed that it saves almost nothing: travellers outside the served area were never instantiated in the first place, so there is nothing there to aggregate. It was chosen before anyone knew what was actually expensive.
 
 What replaces it is a **measurement obligation rather than a named fallback**. Before the demand model is changed at all, the cost of served-area routing and of traveller population must be budgeted separately and measured, along with candidate-search caching, searches shared between travellers with similar origin, destination and time band, cohort sampling, bounded replanning, and forecast frequency. Several of those are likely to be cheaper than changing the model, and none of them has been measured. The accepted cost is that this plan carries no reassuring answer to the scale question until an implementation exists to measure.
 
@@ -64,7 +64,7 @@ The resolution uses **no new dataset**. Population remains the only input, but o
 
 - A journey has a **direction of purpose**. Commuting, education, and business travel flow from residence toward concentration; shopping, leisure, and tourism flow toward whichever end is the greater attractor at that hour.
 - **Attraction scales superlinearly with size.** A place twice as large attracts more than twice the trips, because larger centres hold disproportionate shares of workplaces, institutions, hospitals, and retail. The exponent is a calibration parameter, not a settled figure.
-- **Return travel is explicit.** A commute is an outbound journey in the morning and a return in the evening, sampled as two travellers. Demand is therefore directional by hour, and a peak-direction service can be full while the reverse working runs empty, which is the real behaviour of commuter railways.
+- **Return travel is explicit.** A commute is an outbound journey in the morning and a return in the evening, sampled as two travellers. Demand is therefore directional by hour, and a peak-direction route can be full while the reverse working runs empty, which is the real behaviour of commuter railways.
 
 The accepted limitation is that this cannot tell a city centre from a dormitory suburb of the same population. A 1 km cell of flats near offices and a 1 km cell of flats in a commuter town look identical as destinations.
 
@@ -112,13 +112,13 @@ A traveller builds a small set of **candidate itineraries** from the published t
 
 Times come from the **published timetable**, not from plan 02's technical minimum. A traveller reads what a passenger reads: departure and arrival times including the allowance the player authored under plan 03, dwell at intermediate calls, and transfer connections judged feasible or not against those same times. This corrects what this plan originally said, which was that in-vehicle time came from the shared closed-form running time directly — the 21 September audit noted that travellers would then plan against times no train actually keeps, overstating demand for every padded service and rewarding the player for padding.
 
-The shared movement function keeps its role: it supplies the technical minimum that plan 03 validates the allowance against, and it drives what the train actually does. It does not supply what the passenger believes. Reliability memory, below, continues to act separately on top of the published times, so a service that chronically fails to keep them still loses demand without the times themselves being quietly rewritten.
+The shared movement function keeps its role: it supplies the technical minimum that plan 03 validates the allowance against, and it drives what the train actually does. It does not supply what the passenger believes. Reliability memory, below, continues to act separately on top of the published times, so a route that chronically fails to keep them still loses demand without the times themselves being quietly rewritten.
 
-One consequence worth naming: the running-time allowance becomes a demand lever as well as a punctuality one. Padding a service makes it genuinely less attractive, which is correct, and makes the trade-off between robustness and attractiveness a real decision rather than a free choice.
+One consequence worth naming: the running-time allowance becomes a demand lever as well as a punctuality one. Padding a route makes it genuinely less attractive, which is correct, and makes the trade-off between robustness and attractiveness a real decision rather than a free choice.
 
 The set includes **background alternatives** — car, air, cycling, walking, feeder transit — appropriate to the journey, as the vision requires. These are the outside options the existing catchment model approximates with its fixed `0.35` denominator term, made explicit and journey-dependent. A 40 km trip competes with a car; a 600 km trip competes with a flight; a 2 km trip competes with a bicycle.
 
-Choice among the alternatives is **probabilistic**, not winner-take-all: the traveller draws from a logit over generalised cost. A service slightly slower than its competitor still carries passengers, in proportion to how much worse it is.
+Choice among the alternatives is **probabilistic**, not winner-take-all: the traveller draws from a logit over generalised cost. A route slightly slower than its competitor still carries passengers, in proportion to how much worse it is.
 
 A useful consequence of individual travellers: the prototype's per-cell winner-take-all mode selection in [`calculateCatchments`](../../src/catchment.ts) stops being a defect. Picking one mode is correct for one person, and aggregate mode shares emerge from many travellers. The existing scoring becomes a per-traveller draw rather than a per-cell award, and the module keeps its present role as the potential-reach layer.
 
@@ -160,7 +160,7 @@ Sampled travellers are short-lived and cannot hold a history, so memory lives wi
 
 The game maintains observed **reliability and crowding records** per route or origin-destination pair, accumulated from operation, and every traveller consults them as part of generalised cost. A chronically late or chronically full service loses demand gradually, and a repaired one regains it gradually.
 
-This is deliberately visible: the player can see which record is costing them demand, and that a service's reputation recovers over time rather than instantly. The accumulation and decay rates are open, as is whether the record is per route, per origin-destination pair, or per hour band.
+This is deliberately visible: the player can see which record is costing them demand, and that a route's reputation recovers over time rather than instantly. The accumulation and decay rates are open, as is whether the record is per route, per origin-destination pair, or per hour band.
 
 ### What the prototype must stop doing
 
@@ -178,7 +178,7 @@ The prototype has the SCB 1 km population grid, tiled and lazily loaded by bound
 
 It has no journey purposes, no time of day, no travellers, no itineraries, no transfers, no fares, no capacity, and no crowding. There is no destination attraction of any kind: both ends of every estimated flow are residents.
 
-Catchment figures are potential reach presented without that qualification in places, which the three-layer separation must fix. The gravity estimate does not route anyone through a service, because there are no services.
+Catchment figures are potential reach presented without that qualification in places, which the three-layer separation must fix. The gravity estimate does not route anyone through a route, because there are no services.
 
 Access and egress are currently the same calculation applied at one end. A door-to-door journey needs egress at the far end, where the relevant modes and their weights differ — a business traveller arriving at a city centre station behaves unlike a resident reaching their local one.
 
@@ -192,7 +192,7 @@ Population is a static snapshot, and nothing anticipates demand state in the sav
 4. Inspect an individual traveller's journey to see the choice it made and the alternatives it rejected, with each cost component shown.
 5. Compare forecast against actual to find where operation is losing demand the plan expected.
 6. Read named causes for lost demand — no service at the needed hour, connection too long, train full, fare above willingness to pay, access too slow, reliability record too poor.
-7. Respond by retiming, lengthening or coupling trains, adding a service, moving a station, or changing fares.
+7. Respond by retiming, lengthening or coupling trains, adding a route, moving a station, or changing fares.
 
 Overlay design, the traveller inspector, and how forecast and actual are compared belong to plan 07.
 
@@ -203,12 +203,12 @@ Planning needs implied by the agreed behaviour, not settled schemas:
 - **Purpose:** identity, hourly weekly profile as weights with a floor, value of time, price sensitivity, transfer tolerance, baggage, and directionality. Static tuned content.
 - **Demand source:** population cells with a data year, and the superlinear attraction derived from them per purpose and hour.
 - **Traveller:** origin, destination, purpose, desired departure, value of time, chosen itinerary, current state, and accumulated experience for this journey only. Created on sampling, destroyed on completion or abandonment.
-- **Itinerary:** ordered legs with services and trips, access and egress modes, transfers, fare, and the generalised cost components that produced its score, retained for the inspector.
+- **Itinerary:** ordered legs with routes and trips, access and egress modes, transfers, fare, and the generalised cost components that produced its score, retained for the inspector.
 - **Background alternatives:** car, air, cycle, walk, and feeder transit as journey-appropriate outside options with their own costs.
 - **Occupancy:** load per trip per section against plan 04's capacity, boardings and alightings per stop, and denied boardings as a named diagnostic.
 - **Reliability record:** observed punctuality and crowding per route or pair, with accumulation and decay, consulted by every traveller.
 - **Three layers:** potential reach, forecast demand, and actual journeys held and labelled separately, never substituted for one another.
-- **Interfaces consumed:** shared closed-form running time, occupancy, and delays from plan 02; published week, frequencies, timed journeys, and transfers from plan 03; capacity, berths, and train length from plan 04; fares and fare policy from plan 06.
+- **Interfaces consumed:** shared closed-form running time, occupancy, and delays from plan 02; published timetable, frequencies, timed journeys, and transfers from plan 03; capacity, berths, and train length from plan 04; fares and fare policy from plan 06.
 - **Interfaces produced:** travelled journeys and revenue basis for plan 06, and load and denied-boarding diagnostics for plan 07.
 
 Traveller storage and the cost of sampling and itinerary search belong to plan 08. The save question raised here is now settled there, and against this plan's original expectation: travellers are **persisted**, not resampled on load. This plan had assumed resampling was affordable and the resulting discontinuity minor; the audit showed it was not minor, because plan 02's dwell depends on passenger exchange and plan 06's revenue depends on journeys, so redrawing passengers changes train timing and money. A reloaded save therefore continues with the same travellers it was saved with.
@@ -231,9 +231,9 @@ Traveller storage and the cost of sampling and itinerary search belong to plan 0
 ## Dependencies
 
 - **Infrastructure and operations (02):** the shared closed-form running time, actual occupancy, and named delays. `coveredJourney` is replaced by plan 02's function.
-- **Services and timetabling (03):** the published week is the only source of frequency and timed journeys, replacing the typed-in `departuresPerDay`. Transfers exist because services do.
+- **Routes and timetabling (03):** the published timetable is the only source of frequency and timed journeys, replacing the typed-in `departuresPerDay`. Transfers exist because routes do.
 - **Fleet and depots (04):** seated capacity, berths, and coupled-unit capacity set the hard boarding limit; length and performance shape journey times.
-- **Economy and progression (06):** now written. It sets a national fare rate per passenger-kilometre with per-service modifiers, which this plan consumes as the fare term in generalised cost, and takes travelled journeys as the revenue basis. This plan still sets no price.
+- **Economy and progression (06):** now written. It sets a national fare rate per passenger-kilometre with per-route modifiers, which this plan consumes as the fare term in generalised cost, and takes travelled journeys as the revenue basis. This plan still sets no price.
 - **Interface and player experience (07):** now written, and **it narrows this plan's three-layer interface requirement.** The map carries a single population overlay; forecast demand, actual journeys, load analysis and lost demand all move into panels, chiefly the Finance workspace, alongside the traveller inspector and forecast-against-actual comparison. The layers stay separate in the model and in the numbers — the worked example of forty thousand potential reach against zero forecast and zero actual still reads correctly in a station inspector — but they are no longer three distinct visual layers on the map. The accepted cost, recorded there, is that underperformance must be read in a panel rather than spotted at map scale.
 - **Simulation architecture and saves (08):** now written, and revised after the 21 September audit. Travellers run in the worker and are **persisted** with the rest of the session rather than resampled on load, reversing that plan's original position. Traveller sampling and itinerary search are named as the dominant runtime cost, with a live traveller budget and three scenario targets. It also resolves this plan's open question on traveller weighting, and settles that a weighted traveller splits on partial boarding.
 - **First playable and validation (09):** the corridor scenario must demonstrate a connected passenger journey with a transfer, a peak-direction crowding case, and a denied boarding.
@@ -245,24 +245,24 @@ Numerical expectations must be added once coefficients are calibrated.
 | Scenario | Expected behaviour |
 | --- | --- |
 | A station is placed with no service | Potential reach is reported; forecast demand and actual journeys are zero, and the three are separately labelled. |
-| A timetable is published over a served pair | Forecast demand appears by hour and purpose, derived from the published week rather than a typed frequency. |
+| A timetable is published over a served pair | Forecast demand appears by hour and purpose, derived from the published timetable rather than a typed frequency. |
 | The player changes a hypothetical frequency in the planning view | It is labelled a what-if and does not alter the network's forecast, which follows the published timetable. |
-| A commuter flow is simulated on a weekday | Morning journeys run toward the larger centre and evening journeys return; the peak-direction service loads while the reverse working runs light. |
+| A commuter flow is simulated on a weekday | Morning journeys run toward the larger centre and evening journeys return; the peak-direction route loads while the reverse working runs light. |
 | An overnight service is timetabled | It attracts travellers — chiefly visiting friends and relatives, leisure, and some education and business — because no purpose is gated out of unusual hours. |
 | A student travels home on a Saturday night train | A valid, uncommon traveller, not an impossible one. |
 | A journey time is needed for demand | It comes from plan 02's shared closed-form running time, including dwells and train performance, never from section speed alone. |
 | A 600 km journey is evaluated | Air is among the background alternatives; on a 40 km journey it is not, and a car is. |
-| Two services differ slightly in journey time | Both carry passengers, split by the logit rather than the faster taking all. |
+| Two routes differ slightly in journey time | Both carry passengers, split by the logit rather than the faster taking all. |
 | A business traveller and a student face the same fare rise | The student's demand falls further, because value of time and price sensitivity differ by purpose. |
 | A train reaches its capacity mid-route | Further travellers cannot board; they wait for the next acceptable service or abandon to a background alternative. |
 | A traveller is denied boarding | It is reported as a named diagnostic against that train, stop, and hour, not absorbed into a crowding average. |
 | Two coupled units work a busy trip | Capacity is the sum, and the denied boardings that occurred with one unit do not recur. |
 | A traveller's first train is late and its transfer fails | It re-plans from where it is under the same generalised-cost logic; no train is held for it. |
-| A service is persistently late for several weeks | Its reliability record degrades and demand falls gradually; after repair, demand returns gradually rather than instantly. |
-| The player asks why a service is empty | A specific named cause is given — access, hour, connection, capacity, fare, or reliability — rather than a single demand number. |
+| A route is persistently late for several weeks | Its reliability record degrades and demand falls gradually; after repair, demand returns gradually rather than instantly. |
+| The player asks why a route is empty | A specific named cause is given — access, hour, connection, capacity, fare, or reliability — rather than a single demand number. |
 | The player inspects one travelling traveller | Its chosen itinerary and the rejected alternatives are shown with each generalised-cost component. |
 | Forecast and actual diverge over an operated week | The difference is presented as a comparison attributable to crowding, delays, missed connections, or denied boarding. |
-| Demand exists between two unserved places | It appears as potential reach, never as forecast demand, because there is no published service to forecast against. No travellers are instantiated for it. |
+| Demand exists between two unserved places | It appears as potential reach, never as forecast demand, because there is no published route to forecast against. No travellers are instantiated for it. |
 | A traveller weighted twenty reaches a train with three seats free | It splits: three board, seventeen wait or abandon. The denied boarding is reported as seventeen people, not as one group or as twenty. |
 | A save is reloaded mid-journey | The same travellers continue the same itineraries; none is redrawn, so dwell and revenue are unaffected by the reload. |
 
