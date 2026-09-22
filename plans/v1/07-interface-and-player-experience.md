@@ -201,7 +201,7 @@ One small inherited oddity worth fixing deliberately rather than inheriting: the
 - **Passengers and demand (05):** supplies forecast, actual journeys, the traveller inspector and lost-demand causes for Finance. **This plan narrows its three-layer interface requirement** to separation in the model and the numbers rather than on the map.
 - **Economy and progression (06):** supplies the weekly statement, contracts and cost previews. There are no borrowing controls to design, since bounded borrowing was removed there. The statement carries unusual weight because nothing is blocked for want of money.
 - **Simulation architecture and saves (08):** supplies effective rate, pending validation state, undo availability and save failures, all of which surface in the bottom bar. Its paused-only undo is a presentation obligation this plan accepts.
-- **First playable and validation (09):** selects which of these surfaces the first playable slice actually needs, and is where a deferred onboarding decision would first be felt.
+- **First playable and validation (09):** now written. Its surfaces are introduced **progressively, as each milestone needs them**, never as a separate interface milestone — so there is no point at which the interface is built ahead of the simulation it presents. The deferred onboarding decision is carried forward there unchanged.
 
 ## Acceptance scenarios
 

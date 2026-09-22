@@ -1,6 +1,8 @@
 # Handoff: icrail v1 planning set
 
-Written 2026-09-21. Updated 2026-09-22 after plan 07. For the next agent picking up this work.
+Written 2026-09-21. Updated 2026-09-22, when the planning set was completed. For the next agent picking up this work.
+
+**Planning is done. The next work is implementation.** Start at [09-first-playable-and-validation.md](09-first-playable-and-validation.md), milestone 0.
 
 ## What this is
 
@@ -21,7 +23,7 @@ Written 2026-09-21. Updated 2026-09-22 after plan 07. For the next agent picking
 | [06-economy-and-progression.md](06-economy-and-progression.md) | Complete |
 | [07-interface-and-player-experience.md](07-interface-and-player-experience.md) | Complete |
 | [08-simulation-architecture-and-saves.md](08-simulation-architecture-and-saves.md) | Complete. Taken ahead of 07 deliberately, because it could have invalidated the others |
-| `09-first-playable-and-validation.md` | Not written — take last |
+| [09-first-playable-and-validation.md](09-first-playable-and-validation.md) | Complete. Sets the delivery sequence |
 
 Git: nothing committed. `plans/` and `reports/v1-plan-audit-2026-09-21.md` are untracked and are the only changes in the working tree. **No source file has been modified**, so the test suite (66 node tests plus Playwright) was never run — there was nothing to run it against.
 
@@ -126,9 +128,23 @@ Likely blocking decisions to put to the user: whether the timetable editor is pr
 
 Then **09 last** — it selects a bounded first-playable slice from what the other plans settled rather than deciding anything new. The vision proposes a corridor with a regional and an express sharing stations, a single-track section and a passing loop. Plan 08's "corridor" performance scenario is already sized for it and must be the first target to hold.
 
+## Where implementation starts
+
+[Plan 09](09-first-playable-and-validation.md) is the document to work from. Its shape:
+
+**Six milestones, each defined by exit evidence rather than by code existing.** 0 baseline and contracts, 1 one operating train, 2 timetable and capacity, 3 the passenger loop, 4 the financial loop, 5 regional then national.
+
+**The first playable is milestone 3, when passengers ride.** This was the user's call, one earlier than recommended. It holds up better than it first looks: milestone 3 includes fares, so a week is comparable on revenue before the ledger, statement and contracts exist. The cost — no cost side, so you cannot yet tell whether a route is worth running — is recorded there.
+
+**Milestone 0's first deliverable is the contracts, as TypeScript types and a short README, not a tenth planning document.** Identifiers and units, simulation time and week-occurrence identity, construction-to-operational-graph conversion, command acknowledgement, the error taxonomy, the authored/durable/derived ownership split, the save schema, and the first fixture. Compiler-enforced rather than agreed-and-drifted-from. Tuning constants do **not** go here — they live in versioned data with source evidence and gameplay adjustment as separate fields.
+
+**`App.tsx` is extracted incrementally, only what each milestone needs**, starting with project state and cost computation. Not restructured first. The audit's reasoning was accepted: a refactor designed before a train has run is guided by guesses that are usually wrong. One rule holds throughout — **no game rule may be duplicated into interface code**, even temporarily.
+
+**Three things plan 09 leaves open must be chosen at or before milestone 0**, and none is a discussion this planning set can hold: which real Swedish corridor becomes the curated fixture, which machine plan 08's performance targets are claims about, and every scenario figure.
+
 ## Loose ends
 
-**Four calibration tasks**, each too narrow for a full planning discussion but none of them done:
+**Four calibration tasks**, each too narrow for a full planning discussion and none of them done. Plan 09 places these alongside implementation rather than before it — they do not block milestone 0:
 
 1. Plan 04's train catalogue figures need verification against documented sources, then balancing. Capacity is least certain; acceleration and braking are most consequential, since plan 02's running times *and* separation distances both depend on them.
 2. Plan 02's separation formulae — braking distance and safety margin — can now be written against plan 04's braking rates.
