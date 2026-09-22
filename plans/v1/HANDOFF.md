@@ -53,7 +53,15 @@ Two high findings were settled in the same pass: **travellers cost itineraries o
 - The accepted cost is written into plan 06 rather than softened: **money no longer constrains any individual decision.** The weekly statement and the attribution of a bad week now carry the entire burden of making the economy matter, which raises their weight in plan 07 considerably.
 - That change dissolved the difference between the two game modes, since sandbox was defined as the mode that never blocks. The user redefined them by **what money means**: management has a balance, debt, statement and contracts; **sandbox tracks no total at all**, keeping only fares and profitability so a player can still see whether a corridor would pay. Two readings of that instruction are marked in plan 06 as mine — that sandbox keeps per-week profitability because a rate is not a total, and that contracts go with management.
 
-The **six smaller consistency repairs** in the audit's second section are the only audit work left. They are narrow enough to decide without a full round, and at least two are already fixed in passing.
+**The six smaller consistency repairs are also done**, closing the audit entirely. Three needed a judgement call and each is marked in its own document as mine, so they can be overturned cheaply: editing any value detaches the whole trip and partial detachment is not modelled (03); unserved demand belongs to potential reach rather than forecast, since forecast is defined as needing a published timetable (05); and plan 04 no longer says a long train “fails” a short platform, because a platform overhang is a dwell penalty while a short loop is a genuine refusal — two different outcomes the document had blurred into one word.
+
+**The 21 September audit is now fully resolved:** six blocking findings, six high, six consistency repairs.
+
+## Starting plan 07
+
+Read [07-NOTES-interface-grounding.md](07-NOTES-interface-grounding.md) first. It records what the prototype's interface actually is — one screen, seven construction tools, and a single contextual sidebar doing every kind of editing — and which of the things the other plans assume simply do not exist yet. It also flags that the map-as-primary-surface question is really a question about keeping 2,600 lines of existing component code rather than choosing on a blank page.
+
+Its suggested first round is four questions, and the first looks load-bearing: whether one contextual sidebar can carry the whole game, since every other layout decision follows from the answer.
 
 The “agent” to “traveller” rename is **done** — 93 occurrences across 00, 01, 05 and 08. This file's “next agent” reference means an AI agent and was deliberately left alone.
 

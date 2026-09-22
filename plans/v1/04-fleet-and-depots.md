@@ -52,7 +52,9 @@ The figures below are **proposed and indicative**. Every one must be verified ag
 | X2 | Fast intercity, tilting | Electric | 6 | ~140 m | 200 km/h | ~280 | 0.5 m/s² | 0.9 m/s² | 1 |
 | Nattåg set | Overnight sleeper | Electric | — | ~250 m | 160 km/h | ~250 berths | 0.35 m/s² | 0.8 m/s² | 1 |
 
-The catalogue deliberately spans a wide range of length and performance, so that the constraints this plan introduces actually bite: the X2 and the sleeper set are long enough to fail short platforms and short loops, the Y31 is the only way to work an unwired line, and the X11 exists to make a cheap thin-demand service viable.
+The catalogue deliberately spans a wide range of length and performance, so that the constraints this plan introduces actually bite: the X2 and the sleeper set are long enough to overhang short platforms and to be refused by short loops, the Y31 is the only way to work an unwired line, and the X11 exists to make a cheap thin-demand service viable.
+
+Those two consequences are **not the same**, and this document previously blurred them by saying both “fail”. A platform shorter than the train is served anyway, with plan 02's overhang dwell penalty — length never invalidates a platform stop, as the acceptance table below already says correctly. A loop or siding shorter than the train genuinely cannot hold it, and that is a refusal.
 
 X2's tilting is not modelled. Plan 02 excludes curve modelling, so tilting has nothing to act on; X2 is simply a fast intercity unit with weak acceleration. The class is kept because players expect it, not because it behaves specially.
 

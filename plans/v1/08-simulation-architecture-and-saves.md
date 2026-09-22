@@ -88,7 +88,9 @@ One existing behaviour is explicitly **not** carried forward. [`persistence.ts`]
 
 The rest of that module's approach is kept and extended. Its field-by-field validation of untrusted save data is thorough and correct in spirit, and the same standard should apply to every new persisted type.
 
-**Storage moves to IndexedDB.** A single localStorage key is the current mechanism, and localStorage is typically limited to around 5 MB of string data. A national network with a published week of some thousands of trips plus duties and contracts will approach or exceed that, and localStorage offers no way to fail gracefully when it does. Authored-state-only saves help but do not remove the risk. localStorage is kept for interface preferences only.
+**Storage moves to IndexedDB.** A single localStorage key is the current mechanism, and localStorage is typically limited to around 5 MB of string data. A national network mid-week will exceed that comfortably, now that the save carries live state as well as authored state. localStorage is kept for interface preferences only.
+
+Two corrections the audit made to this document's original reasoning, both worth keeping because the overstatements were load-bearing. First, it said localStorage “offers no way to fail gracefully” — not so: a quota failure throws and can be caught. The real objection is the low ceiling, not the absence of an error. Second, IndexedDB is the right choice but **guarantees nothing about a large save succeeding**: it remains subject to quota limits and to browser eviction. Failed writes must therefore be handled explicitly, a recovery slot kept, and file export treated as the player's own backup rather than a convenience. Requesting persistent storage is worth considering and is not a guarantee either.
 
 **Import and export** of a save as a file is required by the roadmap and is straightforward once the format is explicit: the same serialised state the store holds, written to and read from a file, with the same version gate and the same refusal behaviour. Export is also the player's independent backup against quota and eviction, which matters more now that saves are larger.
 

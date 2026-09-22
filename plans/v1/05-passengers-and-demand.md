@@ -30,7 +30,7 @@ The roadmap requires these to be distinct. They are distinct in kind, not merely
 
 | Layer | What it is | Needs a timetable? | Where it comes from |
 | --- | --- | --- | --- |
-| **Potential reach** | How many people can physically get to a station, and how | No | The existing catchment model, essentially unchanged |
+| **Potential reach** | How many people can physically get to a station, and how — including travel opportunity between places the network does not serve | No | The existing catchment model, essentially unchanged |
 | **Forecast demand** | How many journeys the published week should attract, by hour and purpose | Yes | Aggregate estimate over the published timetable |
 | **Actual journeys** | Who travelled, on which train, and what happened to them | Yes, and operation | Individual travellers during simulation |
 
@@ -46,7 +46,9 @@ Critically, a traveller is a **sampled journey**, created when a journey is deci
 
 This is the decision that makes individual travellers affordable, and it is load-bearing. Millions of persistent residents would be plan 08's hardest problem; a sampled stream is bounded by how much travel the player's railway plausibly attracts. Nothing in this plan may assume a persistent per-person history, which is also why reliability memory is aggregate rather than per traveller.
 
-Travellers are sampled only where rail is plausibly relevant — within reach of the player's stations, for journeys the network could serve. Demand between two places the player does not serve is not instantiated as travellers; it exists in the forecast layer only. If sampling still proves too costly at national scale, this plan originally named aggregate flows outside the served area as the intended fallback. **That fallback is withdrawn.** The 21 September audit observed that it saves almost nothing: travellers outside the served area were never instantiated in the first place, so there is nothing there to aggregate. It was chosen before anyone knew what was actually expensive.
+Travellers are sampled only where rail is plausibly relevant — within reach of the player's stations, for journeys the network could serve. Demand between two places the player does not serve is not instantiated as travellers; it belongs to **potential reach**, not to forecast.
+
+This corrects a contradiction the 21 September audit found. Forecast demand is defined above as needing a published timetable — it is how many journeys the published week should attract — so demand between two wholly unserved places cannot live there, because there is no service to forecast against. Unserved travel opportunity and published-week forecast are different questions and must not share a layer. Which layer unserved demand belongs to is my own call; that the two must be distinguished is the audit's, and is not optional. If sampling still proves too costly at national scale, this plan originally named aggregate flows outside the served area as the intended fallback. **That fallback is withdrawn.** The 21 September audit observed that it saves almost nothing: travellers outside the served area were never instantiated in the first place, so there is nothing there to aggregate. It was chosen before anyone knew what was actually expensive.
 
 What replaces it is a **measurement obligation rather than a named fallback**. Before the demand model is changed at all, the cost of served-area routing and of traveller population must be budgeted separately and measured, along with candidate-search caching, searches shared between travellers with similar origin, destination and time band, cohort sampling, bounded replanning, and forecast frequency. Several of those are likely to be cheaper than changing the model, and none of them has been measured. The accepted cost is that this plan carries no reassuring answer to the scale question until an implementation exists to measure.
 
@@ -260,7 +262,7 @@ Numerical expectations must be added once coefficients are calibrated.
 | The player asks why a service is empty | A specific named cause is given — access, hour, connection, capacity, fare, or reliability — rather than a single demand number. |
 | The player inspects one travelling traveller | Its chosen itinerary and the rejected alternatives are shown with each generalised-cost component. |
 | Forecast and actual diverge over an operated week | The difference is presented as a comparison attributable to crowding, delays, missed connections, or denied boarding. |
-| Demand exists between two unserved places | It appears in the forecast layer only; no travellers are instantiated for it. |
+| Demand exists between two unserved places | It appears as potential reach, never as forecast demand, because there is no published service to forecast against. No travellers are instantiated for it. |
 | A traveller weighted twenty reaches a train with three seats free | It splits: three board, seventeen wait or abandon. The denied boarding is reported as seventeen people, not as one group or as twenty. |
 | A save is reloaded mid-journey | The same travellers continue the same itineraries; none is redrawn, so dwell and revenue are unaffected by the reload. |
 
